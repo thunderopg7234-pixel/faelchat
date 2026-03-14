@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///faelchat.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('postgresql://felchat_db_user:lW7v3IFPRcWC6FwEmv8raT2iq1d1FRqg@dpg-d6qmd9fpm1nc73b6492g-a/felchat_db', 'sqlite:///faelchat.db')
 app.config['SECRET_KEY'] = 'fael_super_secret'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
