@@ -638,13 +638,12 @@
             <video id="localVideo" autoplay playsinline muted></video>
 
             <div class="call-controls">
-                <button id="accept-call-btn" class="call-control-btn accept-btn" style="display:none;" onclick="acceptIncomingCall()">Accept</button>
-                <button id="reject-call-btn" class="call-control-btn reject-btn" style="display:none;" onclick="rejectIncomingCall()">Reject</button>
-                <button id="mute-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleMute()">Mute</button>
-                <button id="end-call-btn" class="call-control-btn end-btn" style="display:none;" onclick="endCurrentCall()">End</button>
-            </div>
-        </div>
-    </div>
+    <button id="accept-call-btn" class="call-control-btn accept-btn" style="display:none;" onclick="acceptIncomingCall()">Accept</button>
+    <button id="reject-call-btn" class="call-control-btn reject-btn" style="display:none;" onclick="rejectIncomingCall()">Reject</button>
+    <button id="mute-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleMute()">Mute</button>
+    <button id="speaker-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleSpeaker()">Speaker</button>
+    <button id="end-call-btn" class="call-control-btn end-btn" style="display:none;" onclick="endCurrentCall()">End</button>
+</div>
 
     <audio id="ringtone-audio" loop preload="auto">
         <source src="/static/ringtone.mp3" type="audio/mpeg">
@@ -1231,6 +1230,7 @@
         document.getElementById('mute-call-btn').style.display = 'none';
         document.getElementById('end-call-btn').style.display = 'none';
         document.getElementById('call-status').innerText = '';
+        document.getElementById('speaker-call-btn').style.display = 'none';
 
         remoteVideo.style.display = 'none';
         localVideo.style.display = 'none';
@@ -1239,11 +1239,12 @@
     }
 
     function setCallButtons(mode) {
-        document.getElementById('accept-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
-        document.getElementById('reject-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
-        document.getElementById('mute-call-btn').style.display = (mode === 'active') ? 'inline-block' : 'none';
-        document.getElementById('end-call-btn').style.display = (mode === 'calling' || mode === 'active') ? 'inline-block' : 'none';
-    }
+    document.getElementById('accept-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
+    document.getElementById('reject-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
+    document.getElementById('mute-call-btn').style.display = (mode === 'active') ? 'inline-block' : 'none';
+    document.getElementById('speaker-call-btn').style.display = (mode === 'active') ? 'inline-block' : 'none';
+    document.getElementById('end-call-btn').style.display = (mode === 'calling' || mode === 'active') ? 'inline-block' : 'none';
+}
 
     async function createPeerConnection(targetId) {
         peerConnection = new RTCPeerConnection(rtcConfig);
@@ -1442,6 +1443,24 @@
         localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
         document.getElementById('mute-call-btn').innerText = isMuted ? 'Unmute' : 'Mute';
     }
+
+    let isSpeakerOn = true;
+
+function toggleSpeaker() {
+    const btn = document.getElementById('speaker-call-btn');
+
+    // Web browsers usually cannot force earpiece vs loudspeaker on phones.
+    // This button is mainly useful for desktop / supported browsers with output routing.
+    isSpeakerOn = !isSpeakerOn;
+
+    if (isSpeakerOn) {
+        btn.innerText = 'Speaker';
+        remoteVideo.muted = false;
+    } else {
+        btn.innerText = 'Earpiece';
+        remoteVideo.muted = false;
+    }
+}
 
     function endCurrentCall() {
         const targetId = pendingCallerId || currentTargetID;
