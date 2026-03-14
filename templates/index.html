@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NexChat Pro</title>
+    <title>FelChat</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         :root { 
@@ -92,7 +92,7 @@
 <div id="app-container">
     
     <div id="auth-screen">
-        <h1 id="atitle" style="margin-bottom: 30px; color: var(--accent);">NexChat Pro</h1>
+        <h1 id="atitle" style="margin-bottom: 30px; color: var(--accent);">FelChat</h1>
         <input id="aname" class="base-input" placeholder="Full Name" style="display:none">
         <input id="aid" class="base-input" placeholder="Username (e.g., Fael)">
         <input id="apass" class="base-input" type="password" placeholder="Password">
@@ -228,7 +228,7 @@
 
     function toggleAuth() {
         isSignUp = !isSignUp;
-        document.getElementById('atitle').innerText = isSignUp ? "Create Account" : "NexChat Pro";
+        document.getElementById('atitle').innerText = isSignUp ? "Create Account" : "FelChat";
         document.getElementById('abtn').innerText = isSignUp ? "Sign Up" : "Login";
         document.getElementById('aname').style.display = isSignUp ? "block" : "none";
     }
