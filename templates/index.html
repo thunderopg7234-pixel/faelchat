@@ -19,7 +19,6 @@
             --bubble-recv: #ffffff;
             --danger: #ff3b30;
             --success: #34c759;
-            /* Premium UI Colors */
             --app-bg: rgba(255, 255, 255, 0.75);
             --glass-blur: blur(25px);
             --page-gradient: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
@@ -27,7 +26,6 @@
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
-        /* The Global Background (Now a beautiful gradient) */
         html, body { 
             margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
@@ -35,7 +33,6 @@
             display: flex; align-items: center; justify-content: center;
         }
 
-        /* The App Window (Centered on Desktop, Full Screen on Mobile) */
         #app-container { 
             width: 100%; height: 100%; max-width: 480px; 
             background: var(--app-bg); 
@@ -45,7 +42,6 @@
             box-shadow: 0 20px 60px rgba(0,0,0,0.15);
         }
 
-        /* Float the app on Desktop */
         @media (min-width: 600px) {
             #app-container { height: 95vh; max-height: 900px; border-radius: 40px; border: 8px solid rgba(255,255,255,0.4); }
         }
@@ -59,7 +55,7 @@
         button.base-btn { width: 100%; padding: 16px; background: var(--accent); color: white; border: none; border-radius: 16px; font-size: 17px; font-weight: bold; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px rgba(94, 92, 230, 0.3); }
         button.base-btn:active { transform: scale(0.98); }
 
-        #group-modal, #call-modal { position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+        #group-modal { position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
         .modal-card { background: white; padding: 25px; border-radius: 20px; width: min(100%, 360px); box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
 
         /* HEADER & BOTTOM NAV */
@@ -76,7 +72,7 @@
         /* CONTENT AREA */
         #content-area { flex: 1; overflow: hidden; position: relative; min-height: 0; }
         
-        /* CHATS LIST (Revamped Card Style) */
+        /* CHATS LIST */
         #chats-view { display: flex; flex-direction: column; height: 100%; width: 100%; }
         .search-bar { padding: 15px 20px; border-bottom: 1px solid var(--line); position: relative; flex-shrink: 0; }
         .search-bar input { width: 100%; padding: 14px 18px; background: rgba(255,255,255,0.6); border: 1px solid white; border-radius: 18px; font-size: 15px; outline: none; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
@@ -94,25 +90,36 @@
         .chat-name { font-weight: 700; font-size: 16px; color: var(--text); }
         .chat-bottom { font-size: 14px; color: var(--subtext); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* SETTINGS (iOS Fixed Layout) */
+        /* SETTINGS */
         #settings-view { display: none; flex-direction: column; height: 100%; overflow-y: auto; width: 100%; }
         .settings-scroll-area { display: flex; flex-direction: column; flex: 1; padding-bottom: 30px; }
         .settings-group { background: rgba(255,255,255,0.9); margin: 20px 16px 0 16px; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.03); }
         .settings-item { padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); cursor: pointer; }
         .settings-item:last-child { border-bottom: none; }
-        
         .logout-container { padding: 20px 16px; margin-top: auto; }
         .btn-logout { background: white; color: var(--danger); width: 100%; padding: 18px; border-radius: 20px; font-size: 17px; font-weight: 700; border: none; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.2s; }
         .btn-logout:active { background: #f2f2f7; transform: scale(0.98); }
 
         /* ACTIVE CHAT & BUBBLES */
         #active-chat { position: absolute; inset: 0; background: var(--app-bg); backdrop-filter: var(--glass-blur); z-index: 50; display: none; flex-direction: column; width: 100%; height: 100%; }
-        .chat-header { background: rgba(255,255,255,0.7); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.5); gap: 12px; }
+        .chat-header { background: rgba(255,255,255,0.7); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.5); gap: 12px; z-index: 100;}
         .chat-header-center { flex: 1; text-align: center; display: flex; flex-direction: column; min-width: 0; }
         .call-actions { display: flex; gap: 8px; align-items: center; }
         .call-btn { width: 40px; height: 40px; border-radius: 50%; border: none; background: rgba(255,255,255,0.9); box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; font-size: 18px; transition: transform 0.2s; }
         .call-btn:active { transform: scale(0.9); }
         
+        /* NEW TELEGRAM-STYLE VOICE DROP-IN UI */
+        @keyframes pulse-white { 0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.7); } 70% { box-shadow: 0 0 0 8px rgba(255,255,255,0); } 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } }
+        
+        #voice-dropin-bar { display: none; background: var(--success); color: white; padding: 12px 20px; align-items: center; justify-content: space-between; box-shadow: 0 4px 15px rgba(0,0,0,0.15); z-index: 90; transition: all 0.3s ease; }
+        
+        #voice-room-area { display: none; background: #1c1c1e; padding: 20px; flex-direction: column; align-items: center; z-index: 80; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .room-video { width: 45%; max-height: 160px; border-radius: 16px; background: #000; object-fit: cover; border: 2px solid #333; display: none; }
+        
+        .room-controls { display: flex; gap: 20px; margin-top: 15px; }
+        .room-btn { width: 50px; height: 50px; border-radius: 50%; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
+        .room-btn:active { transform: scale(0.9); }
+
         #messages-view { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; min-height: 0; }
         .msg-wrapper { display: flex; align-items: flex-end; margin-bottom: 12px; }
         .msg-wrapper.sent { justify-content: flex-end; }
@@ -126,22 +133,7 @@
         .chat-input-area input[type="text"] { flex: 1; padding: 10px; border: none; background: transparent; font-size: 16px; outline: none; min-width: 0; }
         .icon-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--subtext); padding: 8px; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
         .icon-btn.recording { color: var(--danger); animation: pulse 1.5s infinite; }
-
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
-        
-        /* CALL SCREEN */
-        .call-screen { background: rgba(255,255,255,0.95); backdrop-filter: blur(20px); border-radius: 30px; padding: 30px; width: min(100%, 380px); text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.2); }
-        .call-avatar { width: 110px; height: 110px; border-radius: 50%; margin: 0 auto 20px; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; background-size: cover; box-shadow: 0 10px 25px rgba(94, 92, 230, 0.3); }
-        .call-status { color: var(--subtext); margin-top: 8px; margin-bottom: 25px; font-size: 16px; font-weight: 500; }
-        .call-controls { display: flex; justify-content: center; gap: 15px; margin-top: 20px; flex-wrap: wrap; }
-        .call-control-btn { border: none; border-radius: 50%; width: 60px; height: 60px; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.1); transition: transform 0.2s; }
-        .call-control-btn:active { transform: scale(0.9); }
-        .accept-btn { background: var(--success); color: white; }
-        .reject-btn, .end-btn { background: var(--danger); color: white; }
-        .mute-btn, .speaker-btn { background: #f2f2f7; color: #1c1c1e; }
-        #remoteVideo, #localVideo { display: none; width: 100%; border-radius: 20px; background: #000; margin-top: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
-        #localVideo { max-height: 150px; object-fit: cover; border: 3px solid white; margin-top: -50px; width: 30%; align-self: flex-end; position: relative; z-index: 10; }
-        #remoteVideo { max-height: 350px; object-fit: cover; }
     </style>
 </head>
 <body>
@@ -169,26 +161,6 @@
             <button onclick="document.getElementById('group-modal').style.display='none'" class="base-btn" style="background:#e5e5ea; color:#000; box-shadow:none;">Cancel</button>
         </div>
     </div>
-
-    <div id="call-modal">
-        <div class="call-screen">
-            <div id="call-avatar" class="call-avatar">F</div>
-            <h1 id="call-name" style="margin:0; font-size:28px;">Call</h1>
-            <div id="call-status" class="call-status">Calling...</div>
-            <video id="remoteVideo" autoplay playsinline></video>
-            <video id="localVideo" autoplay playsinline muted></video>
-            <div class="call-controls">
-                <button id="accept-call-btn" class="call-control-btn accept-btn" style="display:none;" onclick="acceptIncomingCall()">📞</button>
-                <button id="reject-call-btn" class="call-control-btn reject-btn" style="display:none;" onclick="rejectIncomingCall()">✕</button>
-                
-                <button id="speaker-btn" class="call-control-btn speaker-btn" style="display:none;" onclick="toggleSpeaker()">🔊</button>
-                <button id="mute-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleMute()">🎙️</button>
-                <button id="end-call-btn" class="call-control-btn end-btn" style="display:none;" onclick="endCurrentCall()">✕</button>
-            </div>
-        </div>
-    </div>
-
-    <audio id="ringtone-audio" loop preload="auto"><source src="/static/ringtone.mp3" type="audio/mpeg"></audio>
 
     <div id="content-area">
         
@@ -237,13 +209,12 @@
                         <span style="color: var(--subtext); font-size: 24px;">›</span>
                     </div>
                     <div class="settings-item" onclick="copyCallLink()">
-                        <span style="color: var(--accent); font-weight: 500; font-size: 17px;">🔗 Copy Call Link</span>
+                        <span style="color: var(--accent); font-weight: 500; font-size: 17px;">🔗 Copy Chat Link</span>
                         <span style="color: var(--subtext); font-size: 24px;">›</span>
                     </div>
                 </div>
 
                 <div style="flex: 1;"></div>
-
                 <div class="logout-container">
                     <button class="btn-logout" onclick="logout()">Log Out</button>
                 </div>
@@ -268,9 +239,29 @@
                 <span style="font-size:12px; color:var(--subtext);" id="chat-header-sub">online</span>
             </div>
             <div class="call-actions">
-                <button class="call-btn" onclick="startCall('audio')" title="Voice call">📞</button>
-                <button class="call-btn" onclick="startCall('video')" title="Video call">📹</button>
+                <button class="call-btn" onclick="startDropInVoice('audio')" title="Voice Chat">📞</button>
+                <button class="call-btn" onclick="startDropInVoice('video')" title="Video Chat">📹</button>
                 <div class="avatar" style="width:36px; height:36px; font-size:16px; margin-right:0;" id="chat-header-img"></div>
+            </div>
+        </div>
+
+        <div id="voice-dropin-bar">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 10px; height: 10px; background: white; border-radius: 50%; animation: pulse-white 1.5s infinite;"></div>
+                <span id="voice-dropin-text" style="font-weight: 600; font-size: 15px;">Voice Chat Active</span>
+            </div>
+            <button id="join-dropin-btn" onclick="acceptDropInCall()" style="background: white; color: var(--success); border: none; padding: 6px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; display: none;">Join</button>
+            <span id="voice-dropin-timer" style="font-weight: bold; display: none;">00:00</span>
+        </div>
+
+        <div id="voice-room-area">
+            <div style="display: flex; gap: 12px; width: 100%; justify-content: center;">
+                <video id="roomLocalVideo" autoplay playsinline muted class="room-video"></video>
+                <video id="roomRemoteVideo" autoplay playsinline class="room-video"></video>
+            </div>
+            <div class="room-controls">
+                <button onclick="toggleMute()" id="room-mute-btn" class="room-btn" style="background: #333; color: white;">🎙️</button>
+                <button onclick="endDropInCall()" class="room-btn" style="background: var(--danger); color: white;">✕</button>
             </div>
         </div>
 
@@ -303,19 +294,18 @@
     let mediaRecorder;
     let audioChunks = [];
 
+    // DROP-IN VOICE STATE
     let peerConnection = null;
     let localStream = null;
     let remoteStream = null;
     let pendingOffer = null;
     let pendingCallerId = "";
-    let incomingCallName = "";
     let incomingCallType = "audio";
     let isMuted = false;
-    let isSpeaker = false;
 
     const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    const remoteVideo = document.getElementById('remoteVideo');
-    const localVideo = document.getElementById('localVideo');
+    const roomLocalVideo = document.getElementById('roomLocalVideo');
+    const roomRemoteVideo = document.getElementById('roomRemoteVideo');
 
     function askNotificationPermission() {
         if ("Notification" in window && Notification.permission === "default") Notification.requestPermission();
@@ -332,30 +322,24 @@
         loadRecentChats();
         askNotificationPermission();
         
-        // CHECK FOR CALL LINK ON LOAD
         const urlParams = new URLSearchParams(window.location.search);
         const callTarget = urlParams.get('call');
         if (callTarget && callTarget !== myID) {
-            // Find user details from search suggestions to open chat
             fetch('/search_suggestions?q=' + encodeURIComponent(callTarget))
             .then(res => res.json()).then(results => {
                 const r = results.find(x => x.id === callTarget);
                 if(r) {
                     openChat(r.name, r.id, r.pfp, r.type === 'group');
-                    // Clean up URL so it doesn't keep calling on refresh
                     window.history.replaceState({}, document.title, "/");
-                } else {
-                    alert("User not found from call link.");
                 }
             });
         }
     }
 
-    // COPY CALL LINK FUNCTION
     function copyCallLink() {
         const link = window.location.origin + "/?call=" + myID;
         navigator.clipboard.writeText(link).then(() => {
-            alert("Your Call Link is copied!\n\nSend this to anyone. When they click it, FelChat will open directly to your chat:\n\n" + link);
+            alert("Chat Link copied! Send this to anyone to instantly open a chat with you.");
         });
     }
 
@@ -400,7 +384,6 @@
         fetch('/create_group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, creator_id: myID }) })
         .then(res => res.json()).then(data => {
             if (data.status === 'success') { document.getElementById('group-modal').style.display = 'none'; loadRecentChats(); } 
-            else alert(data.message || 'Could not create group');
         });
     }
 
@@ -471,13 +454,16 @@
         const headerImg = document.getElementById('chat-header-img');
         if (pfpUrl) { headerImg.style.backgroundImage = `url('${pfpUrl}')`; headerImg.innerText = ""; } 
         else { headerImg.style.backgroundImage = "none"; headerImg.innerText = isGroup ? "👥" : (name ? name.charAt(0).toUpperCase() : "U"); }
+        
         document.getElementById('active-chat').style.display = 'flex';
+        endDropInCall(); // clear old calls if switching chats
+
         const room = isGroup ? `group_${id}` : [myID, id].sort().join("_");
         socket.emit('join_chat', { room });
         fetch('/history/' + room).then(res => res.json()).then(msgs => { document.getElementById('messages-view').innerHTML = ""; msgs.forEach(m => renderBubble(m)); });
     }
 
-    function closeChat() { document.getElementById('active-chat').style.display = 'none'; currentTargetID = ""; currentTargetName = ""; currentTargetPFP = ""; loadRecentChats(); }
+    function closeChat() { document.getElementById('active-chat').style.display = 'none'; currentTargetID = ""; currentTargetName = ""; currentTargetPFP = ""; endDropInCall(); loadRecentChats(); }
 
     function sendMsg() {
         const inp = document.getElementById('msg-input');
@@ -547,9 +533,6 @@
         notif.onclick = () => { window.focus(); notif.close(); };
     }
 
-    function playRingtone() { const audio = document.getElementById('ringtone-audio'); if (!audio) return; audio.currentTime = 0; audio.play().catch(() => {}); }
-    function stopRingtone() { const audio = document.getElementById('ringtone-audio'); if (!audio) return; audio.pause(); audio.currentTime = 0; }
-
     socket.on('new_message', (data) => {
         const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
         if (data.room === activeRoom) renderBubble(data);
@@ -564,112 +547,126 @@
     socket.on('ping_radar', () => loadRecentChats());
     function logout() { localStorage.clear(); location.reload(); }
 
-    function showCallModal(name, pfp, statusText) {
-        document.getElementById('call-modal').style.display = 'flex'; document.getElementById('call-name').innerText = name || 'Call'; document.getElementById('call-status').innerText = statusText || 'Calling...';
-        const avatar = document.getElementById('call-avatar');
-        if (pfp) { avatar.style.backgroundImage = `url('${pfp}')`; avatar.innerText = ''; } else { avatar.style.backgroundImage = 'none'; avatar.innerText = name ? name.charAt(0).toUpperCase() : 'F'; }
-    }
+    /* =========================================================
+       NEW TELEGRAM DROP-IN VOICE ROOM LOGIC
+       ========================================================= */
 
-    function hideCallModal() {
-        document.getElementById('call-modal').style.display = 'none'; document.getElementById('call-status').innerText = '';
-        remoteVideo.style.display = 'none'; localVideo.style.display = 'none'; remoteVideo.srcObject = null; localVideo.srcObject = null;
-    }
-
-    function setCallButtons(mode) {
-        ['accept', 'reject', 'mute', 'speaker', 'end'].forEach(id => {
-            const btn = document.getElementById(`${id}-btn`) || document.getElementById(`${id}-call-btn`);
-            if(btn) btn.style.display = 'none';
-        });
-        
-        if (mode === 'incoming') { document.getElementById('accept-call-btn').style.display = 'flex'; document.getElementById('reject-call-btn').style.display = 'flex'; } 
-        else if (mode === 'calling') { document.getElementById('end-call-btn').style.display = 'flex'; } 
-        else if (mode === 'active') { 
-            document.getElementById('end-call-btn').style.display = 'flex'; 
-            document.getElementById('mute-call-btn').style.display = 'flex'; 
-            if(incomingCallType === 'audio') document.getElementById('speaker-btn').style.display = 'flex';
-        }
-    }
-
-    async function createPeerConnection(targetId) {
-        peerConnection = new RTCPeerConnection(rtcConfig); remoteStream = new MediaStream(); remoteVideo.srcObject = remoteStream;
+    async function createPeerConnectionRoom(targetId) {
+        peerConnection = new RTCPeerConnection(rtcConfig); remoteStream = new MediaStream(); roomRemoteVideo.srcObject = remoteStream;
         peerConnection.ontrack = (event) => { event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track)); };
         peerConnection.onicecandidate = (event) => { if (event.candidate) socket.emit('ice_candidate', { target_id: targetId, candidate: event.candidate }); };
         peerConnection.onconnectionstatechange = () => {
-            if (peerConnection && peerConnection.connectionState === 'connected') { document.getElementById('call-status').innerText = 'Connected'; setCallButtons('active'); stopRingtone(); }
-            if (peerConnection && ['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) cleanupCall(false);
+            if (peerConnection && peerConnection.connectionState === 'connected') { 
+                document.getElementById('voice-dropin-text').innerText = 'Connected'; 
+                document.getElementById('voice-dropin-timer').style.display = 'block';
+                document.getElementById('join-dropin-btn').style.display = 'none';
+            }
+            if (peerConnection && ['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) endDropInCall();
         };
     }
 
-    async function getLocalMedia(type) {
+    async function getLocalMediaRoom(type) {
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === 'video' });
-        if (type === 'video') { localVideo.style.display = 'block'; remoteVideo.style.display = 'block'; localVideo.srcObject = localStream; document.getElementById('call-avatar').style.display = 'none'; } 
-        else { localVideo.style.display = 'none'; remoteVideo.style.display = 'none'; document.getElementById('call-avatar').style.display = 'flex'; }
+        roomLocalVideo.srcObject = localStream;
+        roomLocalVideo.style.display = 'block';
+        if (type === 'video') { roomRemoteVideo.style.display = 'block'; } 
         return localStream;
     }
 
-    async function startCall(type) {
-        if (!currentTargetID || isCurrentChatGroup) return alert('Call works for private chats only');
+    // 1. Host Starts the Room
+    async function startDropInVoice(type) {
+        if (!currentTargetID || isCurrentChatGroup) return alert('Drop-in voice works for private chats right now.');
         try {
-            incomingCallType = type; showCallModal(currentTargetName, currentTargetPFP, type === 'video' ? 'Calling video...' : 'Calling...'); setCallButtons('calling');
-            await createPeerConnection(currentTargetID); const stream = await getLocalMedia(type);
+            incomingCallType = type;
+            
+            // Expand UI
+            document.getElementById('voice-dropin-bar').style.display = 'flex';
+            document.getElementById('voice-room-area').style.display = 'flex';
+            document.getElementById('voice-dropin-text').innerText = 'Waiting for ' + currentTargetName + '...';
+            document.getElementById('join-dropin-btn').style.display = 'none';
+            document.getElementById('voice-dropin-timer').style.display = 'none';
+            
+            await createPeerConnectionRoom(currentTargetID); 
+            const stream = await getLocalMediaRoom(type);
             stream.getTracks().forEach(track => { peerConnection.addTrack(track, stream); });
-            const offer = await peerConnection.createOffer(); await peerConnection.setLocalDescription(offer);
+            
+            const offer = await peerConnection.createOffer(); 
+            await peerConnection.setLocalDescription(offer);
+            
+            // We use the existing call_user event, but the receiver will handle it differently now!
             socket.emit('call_user', { target_id: currentTargetID, sender_id: myID, sender_name: myName, sender_pfp: myPFP || '', offer: offer, call_type: type });
-        } catch (e) { cleanupCall(false); alert('Could not start call. Check permissions.'); }
+        } catch (e) { endDropInCall(); alert('Could not access microphone/camera.'); }
     }
 
+    // 2. Guest Receives "Ping" that Room is Active
     socket.on('incoming_call', async (data) => {
-        pendingOffer = data.offer; pendingCallerId = data.sender_id; incomingCallName = data.sender_name || 'Unknown'; incomingCallType = data.call_type || 'audio';
-        showCallModal(incomingCallName, data.sender_pfp || '', incomingCallType === 'video' ? 'Incoming video call...' : 'Incoming call...');
-        setCallButtons('incoming'); playRingtone(); showBrowserNotification(`${incomingCallName} is calling`, 'Incoming call');
+        pendingOffer = data.offer; pendingCallerId = data.sender_id; incomingCallType = data.call_type || 'audio';
+        
+        // Show Green Bar at Top! NO FULL SCREEN MODAL.
+        document.getElementById('voice-dropin-bar').style.display = 'flex';
+        document.getElementById('voice-room-area').style.display = 'none'; // Keep hidden until they click join
+        document.getElementById('voice-dropin-text').innerText = `${data.sender_name} started a Voice Chat`;
+        document.getElementById('join-dropin-btn').style.display = 'block';
+        document.getElementById('voice-dropin-timer').style.display = 'none';
+        
+        showBrowserNotification(`${data.sender_name} started a Voice Chat`, 'Click Join at the top of the chat.');
     });
 
-    async function acceptIncomingCall() {
+    // 3. Guest Clicks "Join"
+    async function acceptDropInCall() {
         if (!pendingOffer || !pendingCallerId) return;
         try {
-            await createPeerConnection(pendingCallerId); const stream = await getLocalMedia(incomingCallType);
+            document.getElementById('join-dropin-btn').style.display = 'none';
+            document.getElementById('voice-dropin-text').innerText = 'Connecting...';
+            document.getElementById('voice-room-area').style.display = 'flex'; // Expand area
+            
+            await createPeerConnectionRoom(pendingCallerId); 
+            const stream = await getLocalMediaRoom(incomingCallType);
             stream.getTracks().forEach(track => { peerConnection.addTrack(track, stream); });
+            
             await peerConnection.setRemoteDescription(new RTCSessionDescription(pendingOffer));
-            const answer = await peerConnection.createAnswer(); await peerConnection.setLocalDescription(answer);
+            const answer = await peerConnection.createAnswer(); 
+            await peerConnection.setLocalDescription(answer);
+            
             socket.emit('answer_call', { target_id: pendingCallerId, answer: answer });
-            document.getElementById('call-status').innerText = 'Connecting...'; setCallButtons('active'); stopRingtone();
+            
             pendingOffer = null; pendingCallerId = "";
-        } catch (e) { cleanupCall(false); alert('Could not accept call'); }
+        } catch (e) { endDropInCall(); alert('Could not connect to Voice Chat.'); }
     }
 
-    function rejectIncomingCall() { stopRingtone(); if (pendingCallerId) socket.emit('reject_call', { target_id: pendingCallerId }); pendingOffer = null; pendingCallerId = ""; cleanupCall(false); }
-    socket.on('call_answered', async (data) => { if (!peerConnection) return; await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); document.getElementById('call-status').innerText = '00:00'; setCallButtons('active'); stopRingtone(); });
+    // 4. Host gets answer
+    socket.on('call_answered', async (data) => { 
+        if (!peerConnection) return; 
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); 
+    });
+
     socket.on('ice_candidate', async (data) => { try { if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {} });
-    socket.on('call_rejected', () => { alert('Call rejected'); cleanupCall(false); });
-    socket.on('call_ended', () => { cleanupCall(false); });
+    socket.on('call_rejected', () => { endDropInCall(); });
+    socket.on('call_ended', () => { endDropInCall(); });
 
     function toggleMute() { 
         if (!localStream) return; isMuted = !isMuted; 
         localStream.getAudioTracks().forEach(track => track.enabled = !isMuted); 
-        document.getElementById('mute-call-btn').style.background = isMuted ? 'rgba(255,255,255,0.9)' : '#f2f2f7'; 
+        document.getElementById('room-mute-btn').style.background = isMuted ? 'rgba(255,255,255,0.9)' : '#333'; 
+        document.getElementById('room-mute-btn').style.color = isMuted ? '#111' : 'white'; 
     }
     
-    async function toggleSpeaker() {
-        const remoteVid = document.getElementById('remoteVideo');
-        if (!remoteVid.setSinkId) {
-            alert("Your browser restricts manual speaker switching. Please use your phone's physical volume controls.");
-            return;
-        }
-        isSpeaker = !isSpeaker;
-        document.getElementById('speaker-btn').style.background = isSpeaker ? 'rgba(255,255,255,0.9)' : '#f2f2f7';
-    }
-
-    function endCurrentCall() { const targetId = pendingCallerId || currentTargetID; if (targetId) socket.emit('end_call', { target_id: targetId }); cleanupCall(true); }
-    
-    function cleanupCall(sendEnd) { 
-        stopRingtone(); 
+    function endDropInCall() { 
+        const targetId = pendingCallerId || currentTargetID; 
+        if (targetId) socket.emit('end_call', { target_id: targetId }); 
+        
         if (peerConnection) { peerConnection.close(); peerConnection = null; } 
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; } 
-        remoteStream = null; pendingOffer = null; pendingCallerId = ""; incomingCallName = ""; 
-        isMuted = false; isSpeaker = false; document.getElementById('call-avatar').style.display = 'flex';
-        document.getElementById('mute-call-btn').style.background = '#f2f2f7'; document.getElementById('speaker-btn').style.background = '#f2f2f7';
-        hideCallModal(); 
+        remoteStream = null; pendingOffer = null; pendingCallerId = ""; isMuted = false; 
+        
+        // Reset UI
+        document.getElementById('voice-dropin-bar').style.display = 'none';
+        document.getElementById('voice-room-area').style.display = 'none';
+        document.getElementById('roomLocalVideo').style.display = 'none';
+        document.getElementById('roomRemoteVideo').style.display = 'none';
+        document.getElementById('room-mute-btn').style.background = '#333';
+        document.getElementById('room-mute-btn').style.color = 'white';
     }
 </script>
 </body>
