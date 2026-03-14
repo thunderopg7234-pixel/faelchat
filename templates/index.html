@@ -604,29 +604,48 @@
                 max-width: 60%;
             }
         }
-        /* Styled Log Out Button */
-.logout-btn-container {
-    padding: 20px;
-    margin-top: auto; /* Pushes it to the bottom if using flex */
+/* Fix for the Logout Button and Settings Layout */
+.settings-scroll-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow-y: auto;
 }
 
-.logout-pill {
+.logout-container {
+    padding: 20px;
+    margin-top: auto; /* Pushes button to the bottom */
+}
+
+/* Updated class name to match your HTML */
+.btn-logout {
     background: white;
-    color: #ff3b30; /* The official iOS Red */
+    color: #ff3b30; 
     border: none;
-    border-radius: 20px; /* Makes it a pill shape */
+    border-radius: 20px; 
     padding: 16px;
     font-size: 17px;
     font-weight: 600;
     width: 100%;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05); /* Soft shadow */
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     transition: transform 0.2s;
 }
 
-.logout-pill:active {
+.btn-logout:active {
     transform: scale(0.98);
     background: #f2f2f7;
+}
+
+/* Ensure bottom nav is always on top */
+.bottom-nav {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 20px)) 0;
+    border-top: 1px solid var(--line);
+    background: rgba(249, 249, 249, 0.95);
+    backdrop-filter: blur(10px);
+    z-index: 100;
 }
     </style>
 </head>
@@ -766,15 +785,16 @@
         <div id="messages-view"></div>
 
         <div class="chat-input-area">
-            <button class="icon-btn" id="mic-btn" onmousedown="startVN(event)" onmouseup="stopVN(event)" ontouchstart="startVN(event)" ontouchend="stopVN(event)">🎤</button>
-            <input type="file" id="media-upload" style="display:none" accept="image/*,video/*" onchange="uploadMedia(event)">
+    <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+    
+    <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
 
-            <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
+    <button class="icon-btn" id="mic-btn" 
+            onmousedown="startVN(event)" onmouseup="stopVN(event)" 
+            ontouchstart="startVN(event)" ontouchend="stopVN(event)">🎤</button>
 
-            <button class="icon-btn" id="mic-btn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()">🎤</button>
-            <button class="icon-btn" style="color:var(--accent); display:none; font-weight:bold;" id="send-text-btn" onclick="sendMsg()">➤</button>
-        </div>
-    </div>
+    <button class="icon-btn" style="color:var(--accent); display:none; font-weight:bold;" 
+            id="send-text-btn" onclick="sendMsg()">➤</button>
 </div>
 
 <script>
@@ -830,14 +850,16 @@
     });
 
     function switchTab(tab) {
-        document.getElementById('chats-view').style.display = (tab === 'chats') ? 'flex' : 'none';
-        
-        // Settings MUST be flex for the bottom button to work
-        document.getElementById('settings-view').style.display = (tab === 'settings') ? 'flex' : 'none';
-        
-        document.getElementById('nav-chats').classList.toggle('active', tab === 'chats');
-        document.getElementById('nav-settings').classList.toggle('active', tab === 'settings');
-    }
+    // Show/Hide Views
+    document.getElementById('chats-view').style.display = (tab === 'chats') ? 'flex' : 'none';
+    
+    // Using 'flex' here is critical for the 'margin-top: auto' button fix
+    document.getElementById('settings-view').style.display = (tab === 'settings') ? 'flex' : 'none';
+    
+    // Update Tab Colors
+    document.getElementById('nav-chats').classList.toggle('active', tab === 'chats');
+    document.getElementById('nav-settings').classList.toggle('active', tab === 'settings');
+}
 
     function toggleAuth() {
         isSignUp = !isSignUp;
