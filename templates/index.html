@@ -7,19 +7,19 @@
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
         :root { 
-            --bg: #ffffff; --text: #000000; --subtext: #8e8e93; 
-            --accent: #5e5ce6; --line: #e5e5ea; --gray-bg: #f2f2f7; 
-            --bubble-sent: #fce4ec; 
-            --bubble-recv: #ffffff;
-            --chat-bg: linear-gradient(145deg, #a8edea 0%, #fed6e3 100%);
-        }
+    --bg: #ffffff; --text: #000000; --subtext: #8e8e93; 
+    --accent: #5e5ce6; /* The main button/icon color (currently purple) */
+    --line: #e5e5ea; --gray-bg: #f2f2f7; 
+    --bubble-sent: #fce4ec; /* The color of YOUR sent messages */
+    --bubble-recv: #ffffff; /* The color of received messages */
+    /* The background of the chat screen */
+    --chat-bg: linear-gradient(145deg, #a8edea 0%, #fed6e3 100%); 
+}
         body, html { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--gray-bg); height: 100vh; overflow: hidden; display: flex; justify-content: center; }
         #app-container { width: 100%; max-width: 450px; background: var(--gray-bg); height: 100%; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
         
         /* Auth & Base Inputs */
-        #auth-screen { position: absolute; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; padding: 40px 20px; align-items: center; justify-content: center; }
-        input.base-input { width: 100%; padding: 15px; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; box-sizing: border-box; outline: none; background: #f9f9f9; }
-        button.base-btn { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; }
+       #auth-screen { position: absolute; inset: 0; background: url('https://www.istockphoto.com/illustrations/online-chat-background') center/cover no-repeat; z-index: 100; display: flex; flex-direction: column; padding: 40px 20px; align-items: center; justify-content: center; }
 
         .header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); z-index: 10; }
         .header-title { font-size: 18px; font-weight: 700; color: #1c1c1e; }
