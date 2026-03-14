@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('postgresql://felchat_db_user:lW7v3IFPRcWC6FwEmv8raT2iq1d1FRqg@dpg-d6qmd9fpm1nc73b6492g-a/felchat_db', 'sqlite:///faelchat.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///faelchat.db'
 app.config['SECRET_KEY'] = 'fael_super_secret'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -63,6 +63,7 @@ def index():
 @app.route('/signup', methods=['POST'])
 def signup():
     data = request.json or {}
+
     username = (data.get('username') or '').strip()
     tele_id = (data.get('tele_id') or '').strip()
     password = (data.get('password') or '').strip()
@@ -76,7 +77,12 @@ def signup():
     new_user = User(username=username, tele_id=tele_id, password=password)
     db.session.add(new_user)
     db.session.commit()
-    return jsonify({"status": "success", "username": new_user.username, "pfp": ""})
+
+    return jsonify({
+        "status": "success",
+        "username": new_user.username,
+        "pfp": new_user.pfp
+    })
 
 
 @app.route('/login', methods=['POST'])
@@ -150,8 +156,8 @@ def create_group():
 
     member = GroupMember(group_code=code, tele_id=creator_id)
     db.session.add(member)
-    db.session.commit()
 
+    db.session.commit()
     return jsonify({"status": "success"})
 
 
@@ -168,7 +174,8 @@ def join_group():
     if not group:
         return jsonify({"status": "error", "message": "Group not found"})
 
-    if not GroupMember.query.filter_by(group_code=code, tele_id=tele_id).first():
+    existing = GroupMember.query.filter_by(group_code=code, tele_id=tele_id).first()
+    if not existing:
         member = GroupMember(group_code=code, tele_id=tele_id)
         db.session.add(member)
         db.session.commit()
@@ -225,11 +232,10 @@ def recent_chats(my_id):
         ts = 0
 
         if last_msg:
-            last_text = f"{last_msg.sender_name}: " + (
-                "Deleted" if last_msg.is_deleted else (
-                    last_msg.content if last_msg.msg_type == 'text' else f"[{last_msg.msg_type}]"
-                )
+            body = "Deleted" if last_msg.is_deleted else (
+                last_msg.content if last_msg.msg_type == 'text' else f"[{last_msg.msg_type}]"
             )
+            last_text = f"{last_msg.sender_name}: {body}"
             time_str = last_msg.timestamp.strftime("%H:%M")
             ts = last_msg.timestamp.timestamp()
 
@@ -288,7 +294,6 @@ def upload_file():
 
     base_name = secure_filename(file.filename)
     filename = f"{datetime.utcnow().timestamp()}_{base_name}"
-
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     file_url = f"/static/uploads/{filename}"
@@ -352,25 +357,33 @@ def delete_msg(data):
     if msg and msg.sender_id == data['sender_id']:
         msg.is_deleted = True
         db.session.commit()
+
         emit('message_deleted', {'msg_id': msg.id, 'room': msg.room}, room=msg.room)
-        emit('ping_radar', {}, room=msg.sender_id)
 
+        if msg.room.startswith("group_"):
+            group_code = msg.room.replace("group_", "", 1)
+            members = GroupMember.query.filter_by(group_code=group_code).all()
+            for m in members:
+                emit('ping_radar', {}, room=m.tele_id)
+        else:
+            parts = msg.room.split("_")
+            for uid in parts:
+                emit('ping_radar', {}, room=uid)
 
-# -------------------------
-# WebRTC signaling for calls
-# -------------------------
 
 @socketio.on('call_user')
 def call_user(data):
     target_id = data.get('target_id')
     sender_id = data.get('sender_id')
     sender_name = data.get('sender_name')
+    sender_pfp = data.get('sender_pfp', '')
     offer = data.get('offer')
     call_type = data.get('call_type', 'audio')
 
     emit('incoming_call', {
         'sender_id': sender_id,
         'sender_name': sender_name,
+        'sender_pfp': sender_pfp,
         'offer': offer,
         'call_type': call_type
     }, room=target_id)
@@ -409,4 +422,5 @@ def end_call(data):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True)
+    port = int(os.environ.get('PORT', 8080))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
