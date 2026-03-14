@@ -604,6 +604,30 @@
                 max-width: 60%;
             }
         }
+        /* Styled Log Out Button */
+.logout-btn-container {
+    padding: 20px;
+    margin-top: auto; /* Pushes it to the bottom if using flex */
+}
+
+.logout-pill {
+    background: white;
+    color: #ff3b30; /* The official iOS Red */
+    border: none;
+    border-radius: 20px; /* Makes it a pill shape */
+    padding: 16px;
+    font-size: 17px;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05); /* Soft shadow */
+    transition: transform 0.2s;
+}
+
+.logout-pill:active {
+    transform: scale(0.98);
+    background: #f2f2f7;
+}
     </style>
 </head>
 <body>
@@ -668,28 +692,40 @@
         </div>
 
         <div id="settings-view">
-            <div class="header">
-                <span class="header-btn" style="visibility:hidden;">Back</span>
-                <span class="header-title" id="settings-username">Username</span>
-                <span class="header-btn" onclick="logout()">Logout</span>
-            </div>
-            <input type="file" id="pfp-upload" style="display:none" accept="image/*" onchange="uploadPFP(event)">
+    <div class="header">
+        <span class="header-btn" style="visibility:hidden;">Back</span>
+        <span class="header-title">Settings</span>
+        <span class="header-btn" style="visibility:hidden;">Logout</span>
+    </div>
 
-            <div class="settings-block">
-                <div class="settings-row" style="color: var(--accent); font-weight: 600; justify-content: center;" onclick="document.getElementById('pfp-upload').click()">
-                    📷 Change Profile Photo
-                </div>
-            </div>
-            <div class="settings-block">
-                <div class="settings-row">
-                    <div style="display: flex; align-items: center;">
-                        <div class="avatar" style="width: 40px; height: 40px; margin-right: 15px;" id="settings-pfp-icon"></div>
-                        <span id="settings-fullname" style="font-weight: 600;">Full Name</span>
+    <div class="settings-scroll-area">
+        <div class="settings-group">
+            <div class="settings-item" style="padding: 20px 16px;" onclick="document.getElementById('pfp-upload').click()">
+                <div style="display: flex; align-items: center;">
+                    <div class="avatar" style="width: 60px; height: 60px; margin-right: 15px;" id="settings-pfp-icon"></div>
+                    <div>
+                        <div id="settings-fullname" style="font-weight: 600; font-size: 18px;">Full Name</div>
+                        <div id="settings-username-display" style="color: var(--subtext); font-size: 14px;">@username</div>
                     </div>
                 </div>
+                <span style="color: var(--subtext);">›</span>
             </div>
         </div>
+
+        <input type="file" id="pfp-upload" style="display:none" accept="image/*" onchange="uploadPFP(event)">
+
+        <div class="settings-group">
+            <div class="settings-item" onclick="document.getElementById('pfp-upload').click()">
+                <span style="color: var(--accent); font-weight: 500;">Change Profile Photo</span>
+                <span style="color: var(--subtext);">›</span>
+            </div>
+        </div>
+
+        <div class="logout-container">
+            <button class="btn-logout" onclick="logout()">Log Out</button>
+        </div>
     </div>
+</div>
 
     <div class="bottom-nav">
         <div class="nav-item"><span class="nav-icon">👤</span>Contacts</div>
@@ -777,8 +813,8 @@
     if (myID) {
         document.getElementById('auth-screen').style.display = 'none';
         socket.emit('connect_radar', { my_id: myID });
-        document.getElementById('settings-username').innerText = myID;
         document.getElementById('settings-fullname').innerText = myName;
+        document.getElementById('settings-username-display').innerText = "@" + myID;
         updatePFPUI(myPFP);
         loadRecentChats();
     }
