@@ -648,6 +648,7 @@
                 <button id="reject-call-btn" class="call-control-btn reject-btn" style="display:none;" onclick="rejectIncomingCall()">Reject</button>
                 <button id="mute-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleMute()">Mute</button>
                 <button id="end-call-btn" class="call-control-btn end-btn" style="display:none;" onclick="endCurrentCall()">End</button>
+                <button id="speaker-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleSpeaker()">Speaker</button>
             </div>
         </div>
     </div>
@@ -727,7 +728,7 @@
         <div id="messages-view"></div>
 
         <div class="chat-input-area">
-            <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+            <button class="icon-btn" id="mic-btn" onmousedown="startVN(event)" onmouseup="stopVN(event)" ontouchstart="startVN(event)" ontouchend="stopVN(event)">🎤</button>
             <input type="file" id="media-upload" style="display:none" accept="image/*,video/*" onchange="uploadMedia(event)">
 
             <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
@@ -1028,41 +1029,53 @@
         });
     }
 
-    async function startRecording() {
-        if (!currentTargetID) return;
+let isRecordingVN = false;
 
-        try {
-            document.getElementById('mic-btn').classList.add('recording');
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
+async function startVN(e) {
+    // Prevent the mobile double-tap glitch
+    if (e) e.preventDefault(); 
+    
+    // Don't start if already recording or if no chat is open
+    if (isRecordingVN || !currentTargetID) return;
+    
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+        mediaRecorder.onstop = sendVoiceNote; // Calls your existing sendVoiceNote function
+        
+        mediaRecorder.start();
+        isRecordingVN = true;
+        
+        // Add visual feedback (make sure .recording-active is in your CSS)
+        document.getElementById('mic-btn').classList.add('recording-active'); 
+    } catch (err) { 
+        alert('Microphone permission denied'); 
+    }
+}
 
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('file', audioBlob, 'voice.webm');
-                formData.append('type', 'voice');
-
-                fetch('/upload', { method: 'POST', body: formData })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.url) emitMessage('voice', 'Voice Note', data.url);
-                });
-
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
-        } catch (e) {
-            alert('Microphone permission denied');
+function stopVN(e) {
+    // Prevent the mobile double-tap glitch
+    if (e) e.preventDefault();
+    
+    if (!isRecordingVN || !mediaRecorder) return;
+    
+    // 500ms delay to ensure the recording actually captures audio before cutting off
+    setTimeout(() => {
+        if (mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            isRecordingVN = false;
+            
+            // Remove visual feedback
+            document.getElementById('mic-btn').classList.remove('recording-active');
+            
+            // Turn off the microphone hardware indicator
+            mediaRecorder.stream.getTracks().forEach(t => t.stop());
         }
-    }
-
-    function stopRecording() {
-        document.getElementById('mic-btn').classList.remove('recording');
-        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
-    }
+    }, 500);
+}
 
     function emitMessage(type, content, url) {
         const room = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
@@ -1190,12 +1203,18 @@
         localVideo.srcObject = null;
     }
 
-    function setCallButtons(mode) {
-        document.getElementById('accept-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
-        document.getElementById('reject-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
-        document.getElementById('mute-call-btn').style.display = (mode === 'active') ? 'inline-block' : 'none';
-        document.getElementById('end-call-btn').style.display = (mode === 'calling' || mode === 'active') ? 'inline-block' : 'none';
-    }
+function setCallButtons(mode) {
+    // Show Accept and Reject ONLY when someone is calling you
+    document.getElementById('accept-wrapper').style.display = (mode === 'incoming') ? 'flex' : 'none';
+    document.getElementById('reject-wrapper').style.display = (mode === 'incoming') ? 'flex' : 'none';
+    
+    // Show End Call when you are dialing OR in an active call
+    document.getElementById('end-wrapper').style.display = (mode === 'calling' || mode === 'active') ? 'flex' : 'none';
+    
+    // Show Mute and Speaker ONLY when the call is actually connected
+    document.getElementById('mute-wrapper').style.display = (mode === 'active') ? 'flex' : 'none';
+    document.getElementById('speaker-wrapper').style.display = (mode === 'active') ? 'flex' : 'none';
+}
 
     async function createPeerConnection(targetId) {
         peerConnection = new RTCPeerConnection(rtcConfig);
@@ -1376,6 +1395,22 @@
         localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
         document.getElementById('mute-call-btn').innerText = isMuted ? 'Unmute' : 'Mute';
     }
+
+    let isSpeaker = true; 
+
+function toggleSpeaker() {
+    const remoteVid = document.getElementById('remoteVideo');
+
+    if (!remoteVid.setSinkId) {
+        alert("Apple iOS does not allow web apps to manually change audio routing. The audio will play through your device's default setting.");
+        return;
+    }
+
+    isSpeaker = !isSpeaker;
+    document.getElementById('speaker-btn').style.background = isSpeaker ? '#e9e9ef' : 'var(--accent)';
+    document.getElementById('speaker-btn').style.color = isSpeaker ? '#111' : '#fff';
+    document.getElementById('speaker-btn').innerText = isSpeaker ? 'Speaker' : 'Earpiece';
+}
 
     function endCurrentCall() {
         if (currentTargetID) {
