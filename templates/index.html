@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NexChat Pro</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        :root { 
+            --bg: #ffffff; --text: #000000; --subtext: #8e8e93; 
+            --accent: #5e5ce6; --line: #e5e5ea; --gray-bg: #f2f2f7; 
+            --bubble-sent: #fce4ec; 
+            --bubble-recv: #ffffff;
+            --chat-bg: linear-gradient(145deg, #a8edea 0%, #fed6e3 100%);
+        }
+        body, html { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--gray-bg); height: 100vh; overflow: hidden; display: flex; justify-content: center; }
+        #app-container { width: 100%; max-width: 450px; background: var(--gray-bg); height: 100%; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+        
+        /* Auth & Base Inputs */
+        #auth-screen { position: absolute; inset: 0; background: var(--bg); z-index: 100; display: flex; flex-direction: column; padding: 40px 20px; align-items: center; justify-content: center; }
+        input.base-input { width: 100%; padding: 15px; margin-bottom: 15px; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; box-sizing: border-box; outline: none; background: #f9f9f9; }
+        button.base-btn { width: 100%; padding: 15px; background: var(--accent); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; }
+
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); z-index: 10; }
+        .header-title { font-size: 18px; font-weight: 700; color: #1c1c1e; }
+        .header-btn { color: var(--accent); font-size: 16px; cursor: pointer; font-weight: 500; }
+        
+        #content-area { flex: 1; overflow: hidden; position: relative; }
+
+        /* Chats List */
+        #chats-view { display: flex; flex-direction: column; height: 100%; background: var(--bg); }
+        .search-bar { padding: 10px 20px; background: var(--bg); border-bottom: 1px solid var(--line); position: relative; }
+        .search-bar input { width: 100%; padding: 10px 15px; background: var(--gray-bg); border: none; border-radius: 10px; font-size: 15px; box-sizing: border-box; outline:none; }
+        #suggestions { position: absolute; top: 55px; left: 20px; right: 20px; background: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 10; max-height: 250px; overflow-y:auto; }
+        
+        #chat-list { flex: 1; overflow-y: auto; }
+        .chat-row { display: flex; padding: 12px 20px; cursor: pointer; border-bottom: 1px solid #f9f9f9; background: white; align-items: center; }
+        .chat-row:active { background: var(--gray-bg); }
+        .avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; margin-right: 15px; flex-shrink: 0; background-size: cover; background-position: center; }
+        .group-avatar { border-radius: 18px; background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
+        .chat-info { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+        .chat-top { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .chat-name { font-weight: 600; font-size: 16px; color: #000; }
+        .chat-bottom { font-size: 14px; color: var(--subtext); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        #group-modal { position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: center; justify-content: center; }
+        .modal-card { background: white; padding: 25px; border-radius: 16px; width: 80%; max-width: 320px; }
+
+        /* Settings View */
+        #settings-view { display: none; flex-direction: column; height: 100%; overflow-y: auto; padding-bottom: 20px; }
+        .settings-block { background: white; border-radius: 12px; margin: 10px 15px; overflow: hidden; }
+        .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 16px; }
+
+        /* Bottom Nav */
+        .bottom-nav { display: flex; justify-content: space-around; padding: 10px 0 20px 0; border-top: 1px solid var(--line); background: rgba(249, 249, 249, 0.95); backdrop-filter: blur(10px); }
+        .nav-item { display: flex; flex-direction: column; align-items: center; color: var(--subtext); font-size: 11px; font-weight: 500; cursor: pointer; }
+        .nav-item.active { color: var(--accent); }
+        .nav-icon { font-size: 24px; margin-bottom: 3px; }
+
+        /* --- ACTIVE CHAT VIEW --- */
+        #active-chat { position: absolute; inset: 0; background: var(--chat-bg); z-index: 50; display: none; flex-direction: column; }
+        .chat-header { background: rgba(255,255,255,0.85); backdrop-filter: blur(15px); border-bottom: none; }
+        .back-badge { background: #1c1c1e; color: white; border-radius: 12px; padding: 2px 8px; font-size: 12px; font-weight: bold; margin-left: 5px; }
+        
+        .pinned-msg { background: rgba(255,255,255,0.9); margin: 8px 15px 0 15px; border-radius: 10px; padding: 10px 15px; display: flex; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border-left: 3px solid var(--accent); z-index: 10; }
+        .pinned-text { flex: 1; font-size: 13px; color: #000; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        
+        #messages-view { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; }
+        
+        /* Message Wrappers (Handles Avatars next to bubbles) */
+        .msg-wrapper { display: flex; align-items: flex-end; margin-bottom: 8px; }
+        .msg-wrapper.sent { justify-content: flex-end; }
+        .msg-wrapper.received { justify-content: flex-start; }
+        
+        /* Tiny avatar for the bubble */
+        .msg-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; margin-right: 8px; flex-shrink: 0; background-size: cover; background-position: center; }
+
+        .bubble { padding: 8px 14px; border-radius: 18px; max-width: 75%; font-size: 15px; line-height: 1.4; box-shadow: 0 1px 2px rgba(0,0,0,0.1); position: relative; }
+        .bubble.sent { background: var(--bubble-sent); color: #000; border-bottom-right-radius: 4px; }
+        .bubble.received { background: var(--bubble-recv); color: #000; border-bottom-left-radius: 4px; }
+        
+        .sender-name { font-size: 12px; font-weight: bold; color: var(--accent); margin-bottom: 2px; display: block; }
+        .bubble img, .bubble video { max-width: 100%; border-radius: 12px; margin-top: 5px; }
+
+        .chat-input-area { margin: 10px 15px 25px 15px; background: rgba(255,255,255,0.95); border-radius: 25px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .chat-input-area input[type="text"] { flex: 1; padding: 10px; border: none; background: transparent; font-size: 16px; outline: none; }
+        .icon-btn { background: none; border: none; font-size: 22px; cursor: pointer; color: #8e8e93; padding: 5px; display: flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    
+    <div id="auth-screen">
+        <h1 id="atitle" style="margin-bottom: 30px; color: var(--accent);">NexChat Pro</h1>
+        <input id="aname" class="base-input" placeholder="Full Name" style="display:none">
+        <input id="aid" class="base-input" placeholder="Username (e.g., Fael)">
+        <input id="apass" class="base-input" type="password" placeholder="Password">
+        <button onclick="handleAuth()" id="abtn" class="base-btn">Login</button>
+        <p onclick="toggleAuth()" style="color: var(--accent); margin-top: 20px; cursor: pointer; font-weight:500;">Switch Login/Signup</p>
+    </div>
+
+    <div id="group-modal">
+        <div class="modal-card">
+            <h3 style="margin-top:0;">Create New Group</h3>
+            <input id="gname" class="base-input" placeholder="Group Name">
+            <input id="gcode" class="base-input" placeholder="Unique Code (e.g., family123)">
+            <button onclick="createGroup()" class="base-btn" style="margin-bottom: 10px;">Create</button>
+            <button onclick="document.getElementById('group-modal').style.display='none'" class="base-btn" style="background:#e5e5ea; color:#000;">Cancel</button>
+        </div>
+    </div>
+
+    <div id="content-area">
+        <div id="chats-view">
+            <div class="header">
+                <span class="header-btn">Edit</span>
+                <span class="header-title">Chats</span>
+                <span class="header-btn" onclick="document.getElementById('group-modal').style.display='flex'">+ Group</span>
+            </div>
+            <div class="search-bar">
+                <input id="search-input" placeholder="🔍 Search people or groups..." oninput="doSearch()">
+                <div id="suggestions"></div>
+            </div>
+            <div id="chat-list"></div>
+        </div>
+
+        <div id="settings-view">
+            <div class="header">
+                <span class="header-btn" style="visibility:hidden;">Back</span>
+                <span class="header-title" id="settings-username">Username</span>
+                <span class="header-btn" onclick="logout()">Logout</span>
+            </div>
+            <input type="file" id="pfp-upload" style="display:none" accept="image/*" onchange="uploadPFP(event)">
+            
+            <div class="settings-block">
+                <div class="settings-row" style="color: var(--accent); font-weight: 600; justify-content: center;" onclick="document.getElementById('pfp-upload').click()">
+                    📷 Change Profile Photo
+                </div>
+            </div>
+            <div class="settings-block">
+                <div class="settings-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="avatar" style="width: 40px; height: 40px; margin-right: 15px;" id="settings-pfp-icon"></div>
+                        <span id="settings-fullname" style="font-weight: 600;">Full Name</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item"><span class="nav-icon">👤</span>Contacts</div>
+        <div class="nav-item active" id="nav-chats" onclick="switchTab('chats')"><span class="nav-icon">💬</span>Chats</div>
+        <div class="nav-item" id="nav-settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span>Settings</div>
+    </div>
+
+    <div id="active-chat">
+        <div class="header chat-header">
+            <div style="display:flex; align-items:center; cursor:pointer;" onclick="closeChat()">
+                <span style="font-size:20px; color:#1c1c1e;">❮</span>
+                <span class="back-badge">12</span>
+            </div>
+            <div style="text-align:center; display:flex; flex-direction:column;">
+                <span class="header-title" id="chat-header-name" style="font-size:16px;">Name</span>
+                <span style="font-size:11px; color:var(--subtext);" id="chat-header-sub">updating...</span>
+            </div>
+            <div class="avatar" style="width:32px; height:32px; font-size:14px;" id="chat-header-img"></div>
+        </div>
+
+        <div class="pinned-msg" id="pinned-block">
+            <div style="margin-right:10px;">📌</div>
+            <div style="flex:1; display:flex; flex-direction:column;">
+                <span style="font-weight:bold; font-size:12px; color:var(--accent);">Pinned Message</span>
+                <span class="pinned-text">Welcome to the chat! Keep it respectful.</span>
+            </div>
+            <div style="cursor:pointer; color:#8e8e93;" onclick="document.getElementById('pinned-block').style.display='none'">✕</div>
+        </div>
+
+        <div id="messages-view"></div>
+        
+        <div class="chat-input-area">
+            <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+            <input type="file" id="media-upload" style="display:none" accept="image/*,video/*" onchange="uploadMedia(event)">
+            
+            <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
+            
+            <button class="icon-btn" id="mic-btn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()">🎤</button>
+            <button class="icon-btn" style="color:var(--accent); display:none; font-weight:bold;" id="send-text-btn" onclick="sendMsg()">➤</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    const socket = io();
+    let myID = localStorage.getItem('fID');
+    let myName = localStorage.getItem('fName');
+    let myPFP = localStorage.getItem('fPFP');
+    
+    let currentTargetID = "";
+    let isCurrentChatGroup = false;
+    let isSignUp = false;
+
+    let mediaRecorder;
+    let audioChunks = [];
+
+    // --- INIT ---
+    if(myID) {
+        document.getElementById('auth-screen').style.display = 'none';
+        socket.emit('connect_radar', {my_id: myID});
+        document.getElementById('settings-username').innerText = myID;
+        document.getElementById('settings-fullname').innerText = myName;
+        updatePFPUI(myPFP);
+        loadRecentChats();
+    }
+
+    document.getElementById('msg-input').addEventListener('input', function() {
+        document.getElementById('mic-btn').style.display = this.value.length > 0 ? 'none' : 'flex';
+        document.getElementById('send-text-btn').style.display = this.value.length > 0 ? 'flex' : 'none';
+    });
+
+    function switchTab(tab) {
+        document.getElementById('chats-view').style.display = (tab === 'chats') ? 'flex' : 'none';
+        document.getElementById('settings-view').style.display = (tab === 'settings') ? 'flex' : 'none';
+        document.getElementById('nav-chats').classList.toggle('active', tab === 'chats');
+        document.getElementById('nav-settings').classList.toggle('active', tab === 'settings');
+    }
+
+    function toggleAuth() {
+        isSignUp = !isSignUp;
+        document.getElementById('atitle').innerText = isSignUp ? "Create Account" : "NexChat Pro";
+        document.getElementById('abtn').innerText = isSignUp ? "Sign Up" : "Login";
+        document.getElementById('aname').style.display = isSignUp ? "block" : "none";
+    }
+
+    function handleAuth() {
+        const id = document.getElementById('aid').value;
+        const pass = document.getElementById('apass').value;
+        const name = document.getElementById('aname').value;
+        const route = isSignUp ? '/signup' : '/login';
+
+        fetch(route, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: name, tele_id: id, password: pass})
+        }).then(res => res.json()).then(data => {
+            if(data.status === 'success') {
+                localStorage.setItem('fID', id);
+                localStorage.setItem('fName', data.username || name);
+                localStorage.setItem('fPFP', data.pfp || "");
+                location.reload();
+            } else { alert(data.message); }
+        });
+    }
+
+    function createGroup() {
+        const name = document.getElementById('gname').value;
+        const code = document.getElementById('gcode').value;
+        if(!name || !code) return alert("Fill all fields");
+
+        fetch('/create_group', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, code: code, creator_id: myID})
+        }).then(res => res.json()).then(data => {
+            if(data.status === 'success') {
+                document.getElementById('group-modal').style.display = 'none';
+                loadRecentChats();
+            } else { alert(data.message); }
+        });
+    }
+
+    function joinGroup(code) {
+        fetch('/join_group', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({code: code, tele_id: myID})
+        }).then(res => res.json()).then(data => {
+            if(data.status === 'success') loadRecentChats();
+        });
+    }
+
+    function updatePFPUI(url) {
+        const settingsIcon = document.getElementById('settings-pfp-icon');
+        if(url) {
+            settingsIcon.style.backgroundImage = `url('${url}')`; settingsIcon.innerText = "";
+        } else {
+            settingsIcon.innerText = myName ? myName.charAt(0).toUpperCase() : "U";
+        }
+    }
+
+    function uploadPFP(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        const formData = new FormData();
+        formData.append('file', file); formData.append('type', 'pfp'); formData.append('tele_id', myID);
+
+        fetch('/upload', { method: 'POST', body: formData })
+        .then(res => res.json()).then(data => {
+            if(data.url) { localStorage.setItem('fPFP', data.url); updatePFPUI(data.url); }
+        });
+    }
+
+    function getAvatarHTML(name, pfpUrl, isGroup) {
+        const extraClass = isGroup ? "group-avatar" : "";
+        const symbol = isGroup ? "👥" : name.charAt(0).toUpperCase();
+        if(pfpUrl) return `<div class="avatar ${extraClass}" style="background-image: url('${pfpUrl}')"></div>`;
+        return `<div class="avatar ${extraClass}">${symbol}</div>`;
+    }
+
+    function loadRecentChats() {
+        fetch('/recent_chats/' + myID).then(res => res.json()).then(chats => {
+            const list = document.getElementById('chat-list');
+            list.innerHTML = "";
+            chats.forEach(chat => {
+                const div = document.createElement('div');
+                div.className = 'chat-row';
+                div.innerHTML = `
+                    ${getAvatarHTML(chat.name, chat.pfp, chat.is_group)}
+                    <div class="chat-info">
+                        <div class="chat-top"><span class="chat-name">${chat.name}</span><span style="color:var(--subtext); font-size:12px;">${chat.time}</span></div>
+                        <div class="chat-bottom">${chat.last_msg}</div>
+                    </div>`;
+                div.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.is_group);
+                list.appendChild(div);
+            });
+        });
+    }
+
+    function doSearch() {
+        const q = document.getElementById('search-input').value;
+        const sug = document.getElementById('suggestions');
+        if(q.length < 1) { sug.innerHTML = ""; return; }
+
+        fetch('/search_suggestions?q=' + q).then(res => res.json()).then(results => {
+            sug.innerHTML = "";
+            results.forEach(r => {
+                if(r.id === myID) return;
+                const isGroup = r.type === 'group';
+                const d = document.createElement('div');
+                d.className = 'chat-row'; d.style.padding = "10px";
+                d.innerHTML = `${getAvatarHTML(r.name, r.pfp, isGroup)} 
+                               <div style="display:flex; flex-direction:column;">
+                               <b>${r.name}</b><small style="color:var(--subtext)">${isGroup ? 'Group Code: ' : '@'}${r.id}</small>
+                               </div>`;
+                d.onclick = () => { 
+                    if(isGroup) joinGroup(r.id);
+                    openChat(r.name, r.id, r.pfp, isGroup); 
+                    sug.innerHTML = ""; document.getElementById('search-input').value = "";
+                };
+                sug.appendChild(d);
+            });
+        });
+    }
+
+    function openChat(name, id, pfpUrl, isGroup) {
+        currentTargetID = id;
+        isCurrentChatGroup = isGroup;
+        document.getElementById('chat-header-name').innerText = name;
+        document.getElementById('chat-header-sub').innerText = isGroup ? "Group Chat" : "online";
+        document.getElementById('pinned-block').style.display = 'flex'; 
+        
+        const headerImg = document.getElementById('chat-header-img');
+        if(pfpUrl) { headerImg.style.backgroundImage = `url('${pfpUrl}')`; headerImg.innerText = ""; }
+        else { headerImg.style.backgroundImage = "none"; headerImg.innerText = isGroup ? "👥" : name.charAt(0).toUpperCase(); }
+        
+        document.getElementById('active-chat').style.display = 'flex';
+        
+        const room = isGroup ? `group_${id}` : [myID, id].sort().join("_");
+        socket.emit('join_chat', {room: room});
+
+        fetch('/history/' + room).then(res => res.json()).then(msgs => {
+            document.getElementById('messages-view').innerHTML = "";
+            msgs.forEach(m => renderBubble(m));
+        });
+    }
+
+    function closeChat() {
+        document.getElementById('active-chat').style.display = 'none';
+        currentTargetID = "";
+        loadRecentChats();
+    }
+
+    function sendMsg() {
+        const inp = document.getElementById('msg-input');
+        if(inp.value && currentTargetID) {
+            emitMessage('text', inp.value, '');
+            inp.value = "";
+            document.getElementById('mic-btn').style.display = 'flex';
+            document.getElementById('send-text-btn').style.display = 'none';
+        }
+    }
+
+    function uploadMedia(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        const type = file.type.startsWith('video') ? 'video' : 'image';
+        const formData = new FormData(); formData.append('file', file); formData.append('type', type);
+
+        fetch('/upload', { method: 'POST', body: formData })
+        .then(res => res.json()).then(data => { if(data.url) emitMessage(type, file.name, data.url); });
+    }
+
+    async function startRecording() {
+        if(!currentTargetID) return;
+        document.getElementById('mic-btn').classList.add('recording');
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'voice.webm'); formData.append('type', 'voice');
+
+            fetch('/upload', { method: 'POST', body: formData })
+            .then(res => res.json()).then(data => { if(data.url) emitMessage('voice', 'Voice Note', data.url); });
+            stream.getTracks().forEach(track => track.stop());
+        };
+        mediaRecorder.start();
+    }
+
+    function stopRecording() {
+        document.getElementById('mic-btn').classList.remove('recording');
+        if(mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    }
+
+    function emitMessage(type, content, url) {
+        const room = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
+        socket.emit('private_message', { 
+            room: room, sender_id: myID, sender_name: myName, target_id: currentTargetID, 
+            is_group: isCurrentChatGroup, msg_type: type, content: content, file_url: url 
+        });
+    }
+
+    function renderBubble(data) {
+        const win = document.getElementById('messages-view');
+        let existingWrapper = document.getElementById('wrap-' + data.id);
+        
+        if (data.is_deleted) {
+            if(existingWrapper) existingWrapper.innerHTML = `<div class="bubble deleted ${data.sender_id === myID ? 'sent' : 'received'}">Message deleted</div>`;
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.id = 'wrap-' + data.id;
+        wrapper.className = `msg-wrapper ${data.sender_id === myID ? 'sent' : 'received'}`;
+        
+        let html = "";
+        
+        // Add Tiny PFP for Group Chat Received Messages
+        if(isCurrentChatGroup && data.sender_id !== myID) {
+            if (data.sender_pfp) {
+                html += `<div class="msg-avatar" style="background-image: url('${data.sender_pfp}')"></div>`;
+            } else {
+                html += `<div class="msg-avatar">${data.sender_name.charAt(0).toUpperCase()}</div>`;
+            }
+        }
+
+        html += `<div class="bubble ${data.sender_id === myID ? 'sent' : 'received'}">`;
+        
+        // Show Sender Name Above Bubble in Groups
+        if(isCurrentChatGroup && data.sender_id !== myID) {
+            html += `<span class="sender-name">${data.sender_name}</span>`;
+        }
+
+        if(data.msg_type === 'image') html += `<img src="${data.file_url}" onclick="window.open('${data.file_url}')">`;
+        else if(data.msg_type === 'video') html += `<video controls src="${data.file_url}" style="max-width:100%; border-radius:10px;"></video>`;
+        else if(data.msg_type === 'voice') html += `<audio controls src="${data.file_url}" style="width: 200px; height: 35px;"></audio>`;
+        else html += data.content;
+
+        html += `<span style="font-size:10px; float:right; margin: 8px 0 0 10px; color:${data.sender_id === myID ? '#8e8e93' : '#a0a0a0'};">now</span>`;
+        html += `</div>`; 
+
+        wrapper.innerHTML = html;
+
+        if(data.sender_id === myID) {
+            wrapper.querySelector('.bubble').title = "Click to delete";
+            wrapper.querySelector('.bubble').onclick = () => { if(confirm("Delete this message?")) socket.emit('delete_message', { msg_id: data.id, sender_id: myID }); };
+        }
+
+        if(existingWrapper) win.replaceChild(wrapper, existingWrapper);
+        else win.appendChild(wrapper);
+        
+        win.scrollTop = 99999;
+    }
+
+    socket.on('new_message', (data) => {
+        const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
+        if(data.room === activeRoom) renderBubble(data);
+    });
+
+    socket.on('message_deleted', (data) => {
+        const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
+        if(data.room === activeRoom) renderBubble({ id: data.msg_id, is_deleted: true, sender_id: myID }); 
+    });
+
+    socket.on('ping_radar', () => loadRecentChats());
+
+    function logout() { localStorage.clear(); location.reload(); }
+</script>
+</body>
+</html>
