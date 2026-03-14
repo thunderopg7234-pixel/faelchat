@@ -39,11 +39,6 @@
             background: var(--gray-bg);
         }
 
-        body {
-            width: 100vw;
-            height: 100vh;
-        }
-
         #app-container {
             width: 100vw;
             height: 100vh;
@@ -604,53 +599,9 @@
                 max-width: 60%;
             }
         }
-/* Fix for the Logout Button and Settings Layout */
-.settings-scroll-area {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    overflow-y: auto;
-}
-
-.logout-container {
-    padding: 20px;
-    margin-top: auto; /* Pushes button to the bottom */
-}
-
-/* Updated class name to match your HTML */
-.btn-logout {
-    background: white;
-    color: #ff3b30; 
-    border: none;
-    border-radius: 20px; 
-    padding: 16px;
-    font-size: 17px;
-    font-weight: 600;
-    width: 100%;
-    cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    transition: transform 0.2s;
-}
-
-.btn-logout:active {
-    transform: scale(0.98);
-    background: #f2f2f7;
-}
-
-/* Ensure bottom nav is always on top */
-.bottom-nav {
-    display: flex;
-    justify-content: space-around;
-    padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 20px)) 0;
-    border-top: 1px solid var(--line);
-    background: rgba(249, 249, 249, 0.95);
-    backdrop-filter: blur(10px);
-    z-index: 100;
-}
     </style>
 </head>
 <body>
-
 <div id="app-container">
 
     <div id="auth-screen">
@@ -691,10 +642,13 @@
                 <button id="reject-call-btn" class="call-control-btn reject-btn" style="display:none;" onclick="rejectIncomingCall()">Reject</button>
                 <button id="mute-call-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleMute()">Mute</button>
                 <button id="end-call-btn" class="call-control-btn end-btn" style="display:none;" onclick="endCurrentCall()">End</button>
-                <button id="speaker-btn" class="call-control-btn mute-btn" style="display:none;" onclick="toggleSpeaker()">Speaker</button>
             </div>
         </div>
     </div>
+
+    <audio id="ringtone-audio" loop preload="auto">
+        <source src="/static/ringtone.mp3" type="audio/mpeg">
+    </audio>
 
     <div id="content-area">
         <div id="chats-view">
@@ -711,42 +665,28 @@
         </div>
 
         <div id="settings-view">
-    <div class="header">
-        <span class="header-btn" style="visibility:hidden;">Back</span>
-        <span class="header-title">Settings</span>
-        <span class="header-btn" style="visibility:hidden;">Logout</span>
-    </div>
+            <div class="header">
+                <span class="header-btn" style="visibility:hidden;">Back</span>
+                <span class="header-title" id="settings-username">Username</span>
+                <span class="header-btn" onclick="logout()">Logout</span>
+            </div>
+            <input type="file" id="pfp-upload" style="display:none" accept="image/*" onchange="uploadPFP(event)">
 
-    <div class="settings-scroll-area" style="display: flex; flex-direction: column; flex: 1;">
-        <div class="settings-group">
-            <div class="settings-item" style="padding: 20px 16px;" onclick="document.getElementById('pfp-upload').click()">
-                <div style="display: flex; align-items: center;">
-                    <div class="avatar" style="width: 60px; height: 60px; margin-right: 15px;" id="settings-pfp-icon"></div>
-                    <div style="text-align: left;">
-                        <div id="settings-fullname" style="font-weight: 600; font-size: 18px;">Full Name</div>
-                        <div id="settings-username-display" style="color: var(--subtext); font-size: 14px;">@username</div>
+            <div class="settings-block">
+                <div class="settings-row" style="color: var(--accent); font-weight: 600; justify-content: center;" onclick="document.getElementById('pfp-upload').click()">
+                    📷 Change Profile Photo
+                </div>
+            </div>
+            <div class="settings-block">
+                <div class="settings-row">
+                    <div style="display: flex; align-items: center;">
+                        <div class="avatar" style="width: 40px; height: 40px; margin-right: 15px;" id="settings-pfp-icon"></div>
+                        <span id="settings-fullname" style="font-weight: 600;">Full Name</span>
                     </div>
                 </div>
-                <span style="color: var(--subtext);">›</span>
             </div>
-        </div>
-
-        <input type="file" id="pfp-upload" style="display:none" accept="image/*" onchange="uploadPFP(event)">
-
-        <div class="settings-group">
-            <div class="settings-item" onclick="document.getElementById('pfp-upload').click()">
-                <span style="color: var(--accent); font-weight: 500;">Change Profile Photo</span>
-                <span style="color: var(--subtext);">›</span>
-            </div>
-        </div>
-
-        <div style="flex: 1;"></div>
-
-        <div class="logout-container">
-            <button class="btn-logout" onclick="logout()">Log Out</button>
         </div>
     </div>
-</div>
 
     <div class="bottom-nav">
         <div class="nav-item"><span class="nav-icon">👤</span>Contacts</div>
@@ -785,16 +725,15 @@
         <div id="messages-view"></div>
 
         <div class="chat-input-area">
-    <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
-    
-    <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
+            <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+            <input type="file" id="media-upload" style="display:none" accept="image/*,video/*" onchange="uploadMedia(event)">
 
-    <button class="icon-btn" id="mic-btn" 
-            onmousedown="startVN(event)" onmouseup="stopVN(event)" 
-            ontouchstart="startVN(event)" ontouchend="stopVN(event)">🎤</button>
+            <input type="text" id="msg-input" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMsg()">
 
-    <button class="icon-btn" style="color:var(--accent); display:none; font-weight:bold;" 
-            id="send-text-btn" onclick="sendMsg()">➤</button>
+            <button class="icon-btn" id="mic-btn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()">🎤</button>
+            <button class="icon-btn" style="color:var(--accent); display:none; font-weight:bold;" id="send-text-btn" onclick="sendMsg()">➤</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -813,13 +752,13 @@
     let mediaRecorder;
     let audioChunks = [];
 
-    // WebRTC state
     let peerConnection = null;
     let localStream = null;
     let remoteStream = null;
     let pendingOffer = null;
     let pendingCallerId = "";
-    let callType = "audio";
+    let incomingCallName = "";
+    let incomingCallType = "audio";
     let isMuted = false;
 
     const rtcConfig = {
@@ -832,16 +771,20 @@
     const remoteVideo = document.getElementById('remoteVideo');
     const localVideo = document.getElementById('localVideo');
 
+    function askNotificationPermission() {
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
+    }
+
     if (myID) {
         document.getElementById('auth-screen').style.display = 'none';
         socket.emit('connect_radar', { my_id: myID });
-        
-        // Correct IDs for the iOS settings look
+        document.getElementById('settings-username').innerText = myID;
         document.getElementById('settings-fullname').innerText = myName;
-        document.getElementById('settings-username-display').innerText = "@" + myID;
-        
         updatePFPUI(myPFP);
         loadRecentChats();
+        askNotificationPermission();
     }
 
     document.getElementById('msg-input').addEventListener('input', function() {
@@ -850,16 +793,11 @@
     });
 
     function switchTab(tab) {
-    // Show/Hide Views
-    document.getElementById('chats-view').style.display = (tab === 'chats') ? 'flex' : 'none';
-    
-    // Using 'flex' here is critical for the 'margin-top: auto' button fix
-    document.getElementById('settings-view').style.display = (tab === 'settings') ? 'flex' : 'none';
-    
-    // Update Tab Colors
-    document.getElementById('nav-chats').classList.toggle('active', tab === 'chats');
-    document.getElementById('nav-settings').classList.toggle('active', tab === 'settings');
-}
+        document.getElementById('chats-view').style.display = (tab === 'chats') ? 'flex' : 'none';
+        document.getElementById('settings-view').style.display = (tab === 'settings') ? 'flex' : 'none';
+        document.getElementById('nav-chats').classList.toggle('active', tab === 'chats');
+        document.getElementById('nav-settings').classList.toggle('active', tab === 'settings');
+    }
 
     function toggleAuth() {
         isSignUp = !isSignUp;
@@ -1095,53 +1033,41 @@
         });
     }
 
-let isRecordingVN = false;
+    async function startRecording() {
+        if (!currentTargetID) return;
 
-async function startVN(e) {
-    // Prevent the mobile double-tap glitch
-    if (e) e.preventDefault(); 
-    
-    // Don't start if already recording or if no chat is open
-    if (isRecordingVN || !currentTargetID) return;
-    
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-        mediaRecorder.onstop = sendVoiceNote; // Calls your existing sendVoiceNote function
-        
-        mediaRecorder.start();
-        isRecordingVN = true;
-        
-        // Add visual feedback (make sure .recording-active is in your CSS)
-        document.getElementById('mic-btn').classList.add('recording-active'); 
-    } catch (err) { 
-        alert('Microphone permission denied'); 
-    }
-}
+        try {
+            document.getElementById('mic-btn').classList.add('recording');
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
 
-function stopVN(e) {
-    // Prevent the mobile double-tap glitch
-    if (e) e.preventDefault();
-    
-    if (!isRecordingVN || !mediaRecorder) return;
-    
-    // 500ms delay to ensure the recording actually captures audio before cutting off
-    setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-            isRecordingVN = false;
-            
-            // Remove visual feedback
-            document.getElementById('mic-btn').classList.remove('recording-active');
-            
-            // Turn off the microphone hardware indicator
-            mediaRecorder.stream.getTracks().forEach(t => t.stop());
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const formData = new FormData();
+                formData.append('file', audioBlob, 'voice.webm');
+                formData.append('type', 'voice');
+
+                fetch('/upload', { method: 'POST', body: formData })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.url) emitMessage('voice', 'Voice Note', data.url);
+                });
+
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+        } catch (e) {
+            alert('Microphone permission denied');
         }
-    }, 500);
-}
+    }
+
+    function stopRecording() {
+        document.getElementById('mic-btn').classList.remove('recording');
+        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
+    }
 
     function emitMessage(type, content, url) {
         const room = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
@@ -1219,14 +1145,61 @@ function stopVN(e) {
         win.scrollTop = 999999;
     }
 
+    function showBrowserNotification(title, bodyText) {
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted") return;
+
+        const notif = new Notification(title, {
+            body: bodyText,
+            icon: currentTargetPFP || myPFP || "/static/icon.png"
+        });
+
+        notif.onclick = () => {
+            window.focus();
+            notif.close();
+        };
+    }
+
+    function playRingtone() {
+        const audio = document.getElementById('ringtone-audio');
+        if (!audio) return;
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+    }
+
+    function stopRingtone() {
+        const audio = document.getElementById('ringtone-audio');
+        if (!audio) return;
+        audio.pause();
+        audio.currentTime = 0;
+    }
+
     socket.on('new_message', (data) => {
         const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
-        if (data.room === activeRoom) renderBubble(data);
+        const isActive = data.room === activeRoom;
+
+        if (isActive) {
+            renderBubble(data);
+        }
+
+        if (data.sender_id !== myID && document.hidden) {
+            const sender = data.sender_name || 'New message';
+            const body =
+                data.msg_type === 'text' ? (data.content || '') :
+                data.msg_type === 'image' ? 'Sent an image' :
+                data.msg_type === 'video' ? 'Sent a video' :
+                data.msg_type === 'voice' ? 'Sent a voice note' :
+                'New message';
+
+            showBrowserNotification(sender, body);
+        }
     });
 
     socket.on('message_deleted', (data) => {
         const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
-        if (data.room === activeRoom) renderBubble({ id: data.msg_id, is_deleted: true, sender_id: myID });
+        if (data.room === activeRoom) {
+            renderBubble({ id: data.msg_id, is_deleted: true, sender_id: myID });
+        }
     });
 
     socket.on('ping_radar', () => loadRecentChats());
@@ -1235,10 +1208,6 @@ function stopVN(e) {
         localStorage.clear();
         location.reload();
     }
-
-    // -------------------------
-    // Call UI helpers
-    // -------------------------
 
     function showCallModal(name, pfp, statusText) {
         document.getElementById('call-modal').style.display = 'flex';
@@ -1269,27 +1238,12 @@ function stopVN(e) {
         localVideo.srcObject = null;
     }
 
-function setCallButtons(mode) {
-    const acceptBtn = document.getElementById('accept-call-btn');
-    const rejectBtn = document.getElementById('reject-call-btn');
-    const muteBtn = document.getElementById('mute-call-btn');
-    const endBtn = document.getElementById('end-call-btn');
-    const speakerBtn = document.getElementById('speaker-btn');
-
-    // Reset all
-    [acceptBtn, rejectBtn, muteBtn, endBtn, speakerBtn].forEach(b => b.style.display = 'none');
-
-    if (mode === 'incoming') {
-        acceptBtn.style.display = 'inline-block';
-        rejectBtn.style.display = 'inline-block';
-    } else if (mode === 'calling') {
-        endBtn.style.display = 'inline-block';
-    } else if (mode === 'active') {
-        endBtn.style.display = 'inline-block';
-        muteBtn.style.display = 'inline-block';
-        speakerBtn.style.display = 'inline-block';
+    function setCallButtons(mode) {
+        document.getElementById('accept-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
+        document.getElementById('reject-call-btn').style.display = (mode === 'incoming') ? 'inline-block' : 'none';
+        document.getElementById('mute-call-btn').style.display = (mode === 'active') ? 'inline-block' : 'none';
+        document.getElementById('end-call-btn').style.display = (mode === 'calling' || mode === 'active') ? 'inline-block' : 'none';
     }
-}
 
     async function createPeerConnection(targetId) {
         peerConnection = new RTCPeerConnection(rtcConfig);
@@ -1312,8 +1266,9 @@ function setCallButtons(mode) {
 
         peerConnection.onconnectionstatechange = () => {
             if (peerConnection && peerConnection.connectionState === 'connected') {
-                document.getElementById('call-status').innerText = callType === 'video' ? 'Video call connected' : 'Voice call connected';
+                document.getElementById('call-status').innerText = incomingCallType === 'video' ? 'Video call connected' : 'Voice call connected';
                 setCallButtons('active');
+                stopRingtone();
             }
 
             if (peerConnection && ['disconnected', 'failed', 'closed'].includes(peerConnection.connectionState)) {
@@ -1354,8 +1309,8 @@ function setCallButtons(mode) {
         }
 
         try {
-            callType = type;
-            showCallModal(currentTargetName, currentTargetPFP, type === 'video' ? 'Starting video call...' : 'Starting voice call...');
+            incomingCallType = type;
+            showCallModal(currentTargetName, currentTargetPFP, type === 'video' ? 'Calling video...' : 'Calling voice...');
             setCallButtons('calling');
 
             await createPeerConnection(currentTargetID);
@@ -1372,6 +1327,7 @@ function setCallButtons(mode) {
                 target_id: currentTargetID,
                 sender_id: myID,
                 sender_name: myName,
+                sender_pfp: myPFP || '',
                 offer: offer,
                 call_type: type
             });
@@ -1386,12 +1342,23 @@ function setCallButtons(mode) {
     socket.on('incoming_call', async (data) => {
         pendingOffer = data.offer;
         pendingCallerId = data.sender_id;
-        callType = data.call_type || 'audio';
+        incomingCallName = data.sender_name || 'Unknown';
+        incomingCallType = data.call_type || 'audio';
 
-        showCallModal(data.sender_name, '', callType === 'video' ? 'Incoming video call...' : 'Incoming voice call...');
+        showCallModal(
+            incomingCallName,
+            data.sender_pfp || '',
+            incomingCallType === 'video' ? 'Incoming video call...' : 'Incoming voice call...'
+        );
+
         setCallButtons('incoming');
+        playRingtone();
+        showBrowserNotification(
+            `${incomingCallName} is calling`,
+            incomingCallType === 'video' ? 'Incoming video call' : 'Incoming voice call'
+        );
 
-        if (callType === 'video') {
+        if (incomingCallType === 'video') {
             remoteVideo.style.display = 'block';
             localVideo.style.display = 'block';
         }
@@ -1402,7 +1369,7 @@ function setCallButtons(mode) {
 
         try {
             await createPeerConnection(pendingCallerId);
-            const stream = await getLocalMedia(callType);
+            const stream = await getLocalMedia(incomingCallType);
 
             stream.getTracks().forEach(track => {
                 peerConnection.addTrack(track, stream);
@@ -1420,6 +1387,7 @@ function setCallButtons(mode) {
 
             document.getElementById('call-status').innerText = 'Connecting...';
             setCallButtons('active');
+            stopRingtone();
 
             pendingOffer = null;
             pendingCallerId = "";
@@ -1430,9 +1398,12 @@ function setCallButtons(mode) {
     }
 
     function rejectIncomingCall() {
+        stopRingtone();
+
         if (pendingCallerId) {
             socket.emit('reject_call', { target_id: pendingCallerId });
         }
+
         pendingOffer = null;
         pendingCallerId = "";
         cleanupCall(false);
@@ -1443,6 +1414,7 @@ function setCallButtons(mode) {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
         document.getElementById('call-status').innerText = 'Connected';
         setCallButtons('active');
+        stopRingtone();
     });
 
     socket.on('ice_candidate', async (data) => {
@@ -1471,32 +1443,17 @@ function setCallButtons(mode) {
         document.getElementById('mute-call-btn').innerText = isMuted ? 'Unmute' : 'Mute';
     }
 
-    let isSpeaker = true; 
-
-function toggleSpeaker() {
-    const remoteVid = document.getElementById('remoteVideo');
-
-    if (!remoteVid.setSinkId) {
-        alert("Apple iOS does not allow web apps to manually change audio routing. The audio will play through your device's default setting.");
-        return;
-    }
-
-    isSpeaker = !isSpeaker;
-    document.getElementById('speaker-btn').style.background = isSpeaker ? '#e9e9ef' : 'var(--accent)';
-    document.getElementById('speaker-btn').style.color = isSpeaker ? '#111' : '#fff';
-    document.getElementById('speaker-btn').innerText = isSpeaker ? 'Speaker' : 'Earpiece';
-}
-
     function endCurrentCall() {
-        if (currentTargetID) {
-            socket.emit('end_call', { target_id: currentTargetID });
-        } else if (pendingCallerId) {
-            socket.emit('end_call', { target_id: pendingCallerId });
+        const targetId = pendingCallerId || currentTargetID;
+        if (targetId) {
+            socket.emit('end_call', { target_id: targetId });
         }
         cleanupCall(true);
     }
 
     function cleanupCall(sendEnd) {
+        stopRingtone();
+
         if (peerConnection) {
             peerConnection.close();
             peerConnection = null;
@@ -1510,24 +1467,12 @@ function toggleSpeaker() {
         remoteStream = null;
         pendingOffer = null;
         pendingCallerId = "";
+        incomingCallName = "";
         isMuted = false;
         document.getElementById('mute-call-btn').innerText = 'Mute';
 
         hideCallModal();
     }
-
-    function sendVoiceNote() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'vn.webm');
-    formData.append('type', 'voice');
-
-    fetch('/upload', { method: 'POST', body: formData })
-    .then(res => res.json())
-    .then(data => {
-        if (data.url) emitMessage('voice', 'Voice Note', data.url);
-    });
-}
 </script>
 </body>
 </html>
