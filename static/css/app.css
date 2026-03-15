@@ -193,3 +193,80 @@ body.chat-room-open .mobile-tabbar{display:none!important}
   .chat-input-area{position:sticky!important;bottom:0!important}
   .telegram-composer{grid-template-columns:42px minmax(0,1fr) 42px 42px}
 }
+
+/* ---- Final safe-area + bottom-space cleanup patch ---- */
+:root{
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+html,body{min-height:100dvh;overflow-x:hidden}
+body{padding:0}
+.app-shell{
+  min-height:100dvh;
+  padding-top:max(10px,var(--safe-top));
+  padding-right:max(10px,var(--safe-right));
+  padding-bottom:10px;
+  padding-left:max(10px,var(--safe-left));
+}
+.main-app{
+  min-height:calc(100dvh - max(10px,var(--safe-top)) - 20px);
+}
+.mobile-tabbar{
+  bottom:10px;
+  margin-bottom:0!important;
+}
+@media (max-width:980px){
+  .app-shell{
+    min-height:100dvh;
+    padding-top:max(8px,var(--safe-top));
+    padding-right:max(8px,var(--safe-right));
+    padding-bottom:8px;
+    padding-left:max(8px,var(--safe-left));
+    display:flex;
+    flex-direction:column;
+  }
+  .main-app{
+    flex:1 1 auto;
+    height:calc(100dvh - max(8px,var(--safe-top)) - 16px);
+    min-height:calc(100dvh - max(8px,var(--safe-top)) - 16px);
+    gap:0;
+  }
+  .sidebar,.chat-panel,.settings-panel{
+    height:100%;
+  }
+  .sidebar-top,.chat-header,.chat-tools-bar{
+    padding-top:max(12px, calc(10px + var(--safe-top)));
+  }
+  .chat-header{
+    top:0;
+  }
+  .header-drawer{
+    top:calc(62px + var(--safe-top));
+  }
+  .messages-view{
+    padding-bottom:96px;
+  }
+  .chat-input-area,
+  .telegram-composer{
+    padding-bottom:max(10px,var(--safe-bottom));
+  }
+  body.chat-room-open .app-shell,
+  body.chat-room-open .main-app,
+  body.chat-room-open .chat-panel,
+  body.chat-room-open .chat-shell{
+    min-height:100dvh;
+    height:100dvh;
+  }
+  body.chat-room-open .app-shell{
+    padding-bottom:0;
+  }
+  body.chat-room-open .chat-panel{
+    border-radius:28px;
+    overflow:hidden;
+  }
+  body.chat-room-open .mobile-tabbar{
+    display:none!important;
+  }
+}
