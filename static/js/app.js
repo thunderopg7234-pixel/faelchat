@@ -121,6 +121,7 @@ function startSession() {
     hydrateProfile();
     socket.emit('connect_radar', { my_id: state.myID });
     loadRecentChats();
+    syncResponsiveLayout();
 }
 
 async function saveProfile() {
@@ -275,6 +276,7 @@ function renderChatPanel(name, pfp, isGroup) {
 }
 
 async function openChat(name, id, pfp, isGroup) {
+    if (isMobileView()) setMobileTab('chat');
     state.currentTargetID = id;
     state.currentTargetName = name;
     state.currentTargetPFP = pfp || '';
@@ -475,3 +477,43 @@ window.addEventListener('click', (event) => {
 if (state.myID) {
     startSession();
 }
+
+
+function isMobileView() {
+    return window.innerWidth <= 760;
+}
+
+function setMobileTab(tab) {
+    const main = byId('main-app');
+    if (!main) return;
+    main.classList.remove('mobile-view-chats', 'mobile-view-chat', 'mobile-view-settings');
+    if (tab === 'chat') {
+        main.classList.add('mobile-view-chat');
+    } else if (tab === 'settings') {
+        main.classList.add('mobile-view-settings');
+    } else {
+        main.classList.add('mobile-view-chats');
+        tab = 'chats';
+    }
+
+    ['chats', 'chat', 'settings'].forEach((name) => {
+        byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab);
+    });
+}
+
+function syncResponsiveLayout() {
+    const main = byId('main-app');
+    if (!main || main.classList.contains('hidden')) return;
+    if (isMobileView()) {
+        if (!main.classList.contains('mobile-view-chats') && !main.classList.contains('mobile-view-chat') && !main.classList.contains('mobile-view-settings')) {
+            setMobileTab(state.currentTargetID ? 'chat' : 'chats');
+        }
+    } else {
+        main.classList.remove('mobile-view-chats', 'mobile-view-chat', 'mobile-view-settings');
+        ['chats', 'chat', 'settings'].forEach((name) => {
+            byId(`tab-btn-${name}`)?.classList.toggle('active', name === 'chats');
+        });
+    }
+}
+
+window.addEventListener('resize', syncResponsiveLayout);

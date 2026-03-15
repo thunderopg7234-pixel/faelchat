@@ -487,3 +487,66 @@ h1, h2, h3, p { margin: 0; }
     .chat-panel { min-height: 54vh; }
     .msg-wrapper { max-width: 92%; }
 }
+
+
+.mobile-tabbar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 10px;
+    border-radius: 26px;
+    z-index: 70;
+}
+.mobile-tab-btn {
+    border: none;
+    background: transparent;
+    border-radius: 18px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: #475569;
+    font-weight: 700;
+}
+.mobile-tab-btn.active {
+    background: rgba(255,255,255,0.82);
+    color: var(--pink);
+}
+.mobile-tab-ico { font-size: 1.1rem; }
+
+@media (max-width: 760px) {
+    body { padding-bottom: 90px; }
+    .main-app {
+        display: block;
+        min-height: auto;
+    }
+    .sidebar, .chat-panel, .settings-panel {
+        min-height: calc(100vh - 124px);
+    }
+    .sidebar, .chat-panel, .settings-panel {
+        display: none;
+    }
+    .main-app.mobile-view-chats .sidebar,
+    .main-app.mobile-view-chat .chat-panel,
+    .main-app.mobile-view-settings .settings-panel {
+        display: flex;
+    }
+    .main-app.mobile-view-chat .chat-panel.empty-state,
+    .main-app.mobile-view-settings .settings-panel,
+    .main-app.mobile-view-chats .sidebar {
+        display: flex;
+    }
+    .main-app.mobile-view-chat .chat-panel.empty-state {
+        display: grid;
+    }
+    .settings-panel { padding-bottom: 100px; }
+    .sidebar { min-height: calc(100vh - 124px); }
+    .chat-panel { min-height: calc(100vh - 124px); }
+    .mobile-tabbar { display: grid; }
+    .danger-ghost { display: none; }
+}
