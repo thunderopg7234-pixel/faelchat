@@ -4,4 +4,3 @@ Flask-SQLAlchemy
 Werkzeug
 gunicorn
 eventlet
-psycopg2-binary

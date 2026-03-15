@@ -1,406 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FelChat</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FaelChat</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <style>
-:root { 
-    --bg: #f8f9fc; 
-    --text: #1a1a1a; 
-    --subtext: #6e6e73; 
-    --accent: #6366f1; /* Modern Indigo */
-    --accent-light: #e0e7ff;
-    --line: rgba(0,0,0,0.05); 
-    --glass: rgba(255, 255, 255, 0.8);
-    --bubble-sent: #6366f1; 
-    --bubble-recv: #ffffff;
-    --chat-bg: #f0f2f5;
-}
-
-body, html { 
-    margin: 0; padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
-    background: var(--bg); color: var(--text); height: 100vh; width: 100vw; overflow: hidden; 
-}
-
-#app-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; position: relative; }
-
-#auth-screen { position: absolute; inset: 0; background: var(--chat-bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-.auth-box { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(15px); padding: 40px; border-radius: 24px; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.3); }
-
-.header { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(20px); }
-.header-title { font-size: 20px; font-weight: 700; }
-.header-btn { color: var(--accent); font-size: 16px; cursor: pointer; font-weight: 500; transition: opacity 0.2s; }
-.header-btn:hover { opacity: 0.8; }
-
-        .context-menu {
-    position: fixed;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(15px);
-    border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-    width: 220px;
-    z-index: 9999;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.context-menu .menu-item {
-    padding: 14px 18px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 16px;
-    font-weight: 500;
-    color: #1a1a1a;
-    cursor: pointer;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
-    transition: background 0.1s;
-}
-
-.context-menu .menu-item:last-child { border-bottom: none; }
-.context-menu .menu-item:hover { background: rgba(0,0,0,0.05); }
-.context-menu .menu-item.delete { color: #ff3b30; } /* Red delete text */        
-
-#content-area { flex: 1; overflow: hidden; position: relative; width: 100%; }
-
-#chats-view { display: flex; flex-direction: column; height: 100%; width: 100%; }
-
-/* SEARCH BAR & SUGGESTIONS */
-.search-bar { padding: 15px 25px; background: transparent; border-bottom: 1px solid var(--line); position: relative; }
-.search-bar input { 
-    width: 100%; padding: 12px 18px; background: rgba(0,0,0,0.04); 
-    border: none; border-radius: 12px; font-size: 16px; outline: none; box-sizing: border-box; color: var(--text);
-}
-#suggestions { 
-    position: absolute; top: 70px; left: 25px; right: 25px; 
-    background: white; border-radius: 15px; 
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
-    z-index: 500; max-height: 300px; overflow-y: auto; 
-}
-
-#chat-list { flex: 1; overflow-y: auto; width: 100%; padding-top: 8px; }
-.chat-row { display: flex; margin: 0 15px 8px 15px; padding: 12px 15px; cursor: pointer; border-radius: 16px; background: transparent; align-items: center; transition: all 0.2s ease; border: none; }
-.chat-row:hover { background: var(--accent-light); transform: translateY(-1px); }
-.avatar { 
-    width: 55px; height: 55px; border-radius: 50%; 
-    background: var(--accent); color: white; 
-    display: flex; align-items: center; justify-content: center; 
-    font-size: 22px; font-weight: bold; margin-right: 18px; 
-    flex-shrink: 0; background-size: cover; background-position: center; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
-}
-
-.bottom-nav { display: flex; justify-content: space-around; padding: 12px 0 25px 0; border-top: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(20px); }
-.nav-item { text-align: center; color: var(--subtext); flex: 1; cursor: pointer; transition: color 0.2s ease; }
-.nav-item.active { color: var(--accent); font-weight: 600; }
-.nav-icon { font-size: 24px; display: block; margin-bottom: 4px; }
-
-        /* ACTIVE CHAT VIEW */
-        #active-chat { position: absolute; inset: 0; background: var(--chat-bg); z-index: 600; display: none; flex-direction: column; }
-        #messages-view { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
-        
-        .msg-wrapper { display: flex; align-items: flex-end; margin-bottom: 8px; }
-        .msg-wrapper.sent { justify-content: flex-end; }
-        .msg-wrapper.received { justify-content: flex-start; }
-        .msg-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; margin-right: 8px; flex-shrink: 0; background-size: cover; }
-
-        .bubble { padding: 12px 16px; border-radius: 20px; max-width: 70%; line-height: 1.4; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
-        .bubble.sent { background: var(--bubble-sent); border-bottom-right-radius: 4px; }
-        .bubble.received { background: var(--bubble-recv); border-bottom-left-radius: 4px; }
-
-        .chat-input-area { padding: 15px 25px; background: #fff; display: flex; align-items: center; gap: 15px; border-top: 1px solid var(--line); }
-        .chat-input-area input { flex: 1; border: none; background: var(--gray-bg); padding: 12px 18px; border-radius: 25px; font-size: 16px; outline: none; }
-        
-        .base-btn { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; }
-        .base-input { width: 100%; padding: 14px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; outline: none; box-sizing: border-box; }
-        
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
-
-<div id="message-context-menu" class="context-menu" style="display: none;">
-    <div class="menu-item" onclick="handleMenuAction('reply')">
-        <span>Reply</span> <span>↩️</span>
-    </div>
-    <div class="menu-item" onclick="handleMenuAction('copy')">
-        <span>Copy</span> <span>📄</span>
-    </div>
-    <div class="menu-item" onclick="handleMenuAction('edit')">
-        <span>Edit</span> <span>✏️</span>
-    </div>
-    <div class="menu-item" onclick="handleMenuAction('forward')">
-        <span>Forward</span> <span>↪️</span>
-    </div>
-    <div class="menu-item delete" onclick="handleMenuAction('delete')">
-        <span>Delete</span> <span>🗑️</span>
-    </div>
-    <div class="menu-item" onclick="handleMenuAction('select')">
-        <span>Select</span> <span>☑️</span>
-    </div>
-</div>    
-    
-<div id="app-wrapper">
-    
-    <div id="auth-screen">
-        <div class="auth-box">
-            <h1 id="atitle" style="margin:0 0 10px 0; color:var(--accent);">FelChat</h1>
-            <input id="aname" class="base-input" placeholder="Full Name" style="display:none">
-            <input id="aid" class="base-input" placeholder="Username">
-            <input id="apass" class="base-input" type="password" placeholder="Password">
-            <button onclick="handleAuth()" id="abtn" class="base-btn">Login</button>
-            <p onclick="toggleAuth()" style="color:var(--accent); margin-top:15px; cursor:pointer; font-size:14px;">Switch to Sign Up</p>
-        </div>
-    </div>
-
-    <div id="content-area">
-        <div id="chats-view">
-            <div class="header">
-                <span class="header-btn">Edit</span>
-                <span class="header-title">Chats</span>
-                <span class="header-btn" onclick="document.getElementById('group-modal').style.display='flex'">+ Group</span>
+    <div class="app-shell">
+        <section id="auth-screen" class="auth-screen">
+            <div class="auth-card glass-card">
+                <div class="brand-pill">FaelChat</div>
+                <h1 id="auth-title">Welcome back</h1>
+                <p id="auth-subtitle">Modern private chat with media sharing.</p>
+                <input id="aname" class="base-input hidden" placeholder="Full Name">
+                <input id="aid" class="base-input" placeholder="User ID">
+                <input id="apass" class="base-input" type="password" placeholder="Password">
+                <button id="abtn" class="base-btn" onclick="handleAuth()">Login</button>
+                <button class="link-btn" onclick="toggleAuth()">Switch to Sign Up</button>
             </div>
-            <div class="search-bar">
-                <input id="search-input" placeholder="🔍 Search people or groups..." oninput="doSearch()">
-                <div id="suggestions"></div>
+        </section>
+
+        <main id="main-app" class="main-app hidden">
+            <aside class="sidebar glass-card">
+                <div class="sidebar-top">
+                    <div>
+                        <div class="eyebrow">Your space</div>
+                        <h2>Chats</h2>
+                    </div>
+                    <button class="icon-btn" onclick="openModal('group-modal')">＋</button>
+                </div>
+
+                <div class="search-wrap">
+                    <input id="search-input" placeholder="Search users or groups" oninput="doSearch()" autocomplete="off">
+                    <div id="suggestions" class="suggestions"></div>
+                </div>
+
+                <div id="chat-list" class="chat-list"></div>
+            </aside>
+
+            <section id="chat-panel" class="chat-panel glass-card empty-state">
+                <div class="empty-center">
+                    <div class="empty-icon">💬</div>
+                    <h3>Select a chat</h3>
+                    <p>Search a user ID, open a recent chat, or create a group.</p>
+                </div>
+            </section>
+
+            <aside id="settings-view" class="settings-panel glass-card">
+                <div class="sidebar-top">
+                    <div>
+                        <div class="eyebrow">Profile</div>
+                        <h2>Settings</h2>
+                    </div>
+                    <button class="danger-ghost" onclick="logout()">Logout</button>
+                </div>
+
+                <div class="profile-card">
+                    <div id="settings-pfp-icon" class="profile-avatar avatar large"></div>
+                    <h3 id="settings-fullname">Name</h3>
+                    <p id="settings-id">@userid</p>
+                    <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
+                    <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="uploadPFP(event)">
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <div id="group-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top">
+                <h3>Create or Join Group</h3>
+                <button class="icon-btn" onclick="closeModal('group-modal')">✕</button>
             </div>
-            <div id="chat-list"></div>
-        </div>
-
-        <div id="settings-view" style="display:none; height:100%; background:white;">
-            <div class="header"><span class="header-title">Settings</span><span class="header-btn" onclick="logout()">Logout</span></div>
-            <div style="padding: 40px; text-align:center;">
-                <div id="settings-pfp-icon" class="avatar" style="width:100px; height:100px; margin: 0 auto 20px auto; font-size: 40px;"></div>
-                <h2 id="settings-fullname">Name</h2>
-                <button class="base-btn" style="max-width:200px;" onclick="document.getElementById('pfp-upload').click()">Change Photo</button>
-                <input type="file" id="pfp-upload" style="display:none" onchange="uploadPFP(event)">
+            <input id="group-name" class="base-input" placeholder="Group name">
+            <input id="group-code" class="base-input" placeholder="Group code">
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="joinGroup()">Join</button>
+                <button class="base-btn" onclick="createGroup()">Create</button>
             </div>
         </div>
     </div>
 
-    <div class="bottom-nav">
-        <div class="nav-item" onclick="switchTab('contacts')"><span class="nav-icon">👤</span>Contacts</div>
-        <div class="nav-item active" id="nav-chats" onclick="switchTab('chats')"><span class="nav-icon">💬</span>Chats</div>
-        <div class="nav-item" id="nav-settings" onclick="switchTab('settings')"><span class="nav-icon">⚙️</span>Settings</div>
-    </div>
+    <div id="toast" class="toast hidden"></div>
 
-    <div id="active-chat">
-        <div class="header">
-            <span class="header-btn" onclick="closeChat()">❮ Back</span>
-            <div id="chat-header-name" style="font-weight:700">Name</div>
-            <div id="chat-header-img" class="avatar" style="width:35px; height:35px; margin:0; font-size:14px;"></div>
-        </div>
-        <div id="messages-view"></div>
-        <div class="chat-input-area">
-            <span style="font-size:24px; cursor:pointer;" onclick="document.getElementById('media-upload').click()">📎</span>
-            <input type="file" id="media-upload" style="display:none" onchange="uploadMedia(event)">
-            <input type="text" id="msg-input" placeholder="Message" onkeypress="if(event.key==='Enter') sendMsg()">
-            <span style="color:var(--accent); font-weight:bold; cursor:pointer;" onclick="sendMsg()">Send</span>
-        </div>
-    </div>
-</div>
-
-<script>
-    const socket = io();
-    let myID = localStorage.getItem('fID');
-    let myName = localStorage.getItem('fName');
-    let currentTargetID = "";
-    let isCurrentChatGroup = false;
-    let isSignUp = false;
-    let pressTimer;
-    let activeMessageId = null;
-    let activeMessageContent = "";
-
-        if(myID) {
-        document.getElementById('auth-screen').style.display = 'none';
-        socket.emit('connect_radar', {my_id: myID});
-        loadRecentChats();
-        
-        // --- NEW: Load Settings Profile Data ---
-        document.getElementById('settings-fullname').innerText = myName;
-        const savedPfp = localStorage.getItem('fPfp');
-        const pfpIcon = document.getElementById('settings-pfp-icon');
-        if (savedPfp) {
-            pfpIcon.style.backgroundImage = `url(${savedPfp})`;
-            pfpIcon.innerText = '';
-        } else {
-            pfpIcon.innerText = myName ? myName.charAt(0) : '?';
-        }
-    }
-
-
-    function doSearch() {
-        const q = document.getElementById('search-input').value;
-        const sug = document.getElementById('suggestions');
-        if(q.length < 1) { sug.innerHTML = ""; return; }
-
-        fetch('/search_suggestions?q=' + q).then(res => res.json()).then(results => {
-            sug.innerHTML = "";
-            results.forEach(r => {
-                const div = document.createElement('div');
-                div.className = 'chat-row';
-                div.innerHTML = `
-                    <div class="avatar" style="width:40px; height:40px; font-size:16px; ${r.pfp ? 'background-image:url('+r.pfp+')' : ''}">${r.pfp ? '' : r.name.charAt(0)}</div>
-                    <div><b>${r.name}</b><br><small style="color:gray">${r.id}</small></div>
-                `;
-                div.onclick = () => {
-                    openChat(r.name, r.id, r.pfp, r.type === 'group');
-                    sug.innerHTML = ""; document.getElementById('search-input').value = "";
-                };
-                sug.appendChild(div);
-            });
-        });
-    }
-
-    function openChat(name, id, pfp, isGroup) {
-        currentTargetID = id; isCurrentChatGroup = isGroup;
-        document.getElementById('chat-header-name').innerText = name;
-        const hImg = document.getElementById('chat-header-img');
-        hImg.style.backgroundImage = pfp ? `url(${pfp})` : '';
-        hImg.innerText = pfp ? '' : name.charAt(0);
-        document.getElementById('active-chat').style.display = 'flex';
-        const room = isGroup ? `group_${id}` : [myID, id].sort().join("_");
-        socket.emit('join_chat', {room: room});
-        fetch('/history/' + room).then(res => res.json()).then(msgs => {
-            document.getElementById('messages-view').innerHTML = "";
-            msgs.forEach(m => renderBubble(m));
-        });
-    }
-
-    function renderBubble(data) {
-    const win = document.getElementById('messages-view');
-    const wrap = document.createElement('div');
-    wrap.className = `msg-wrapper ${data.sender_id === myID ? 'sent' : 'received'}`;
-    
-    let html = "";
-    if(isCurrentChatGroup && data.sender_id !== myID) {
-        html += `<div class="msg-avatar" style="${data.sender_pfp ? 'background-image:url('+data.sender_pfp+')' : ''}">${data.sender_pfp ? '' : data.sender_name.charAt(0)}</div>`;
-    }
-    
-    // We add an ID to the bubble so we can hide it if it gets deleted
-    html += `<div class="bubble ${data.sender_id === myID ? 'sent' : 'received'}" id="msg-bubble-${data.id}">${data.content}</div>`;
-    wrap.innerHTML = html; 
-    win.appendChild(wrap); 
-    win.scrollTop = 99999;
-
-    // --- NEW: LONG PRESS & RIGHT CLICK LISTENERS ---
-    const bubbleElement = wrap.querySelector('.bubble');
-    
-    // Right Click (Desktop)
-    bubbleElement.addEventListener('contextmenu', (e) => {
-        openContextMenu(e, data.id, data.content);
-    });
-
-    // Long Press (Mobile)
-    bubbleElement.addEventListener('touchstart', (e) => {
-        pressTimer = window.setTimeout(() => openContextMenu(e, data.id, data.content), 500); // 500ms hold
-    });
-    bubbleElement.addEventListener('touchend', () => clearTimeout(pressTimer));
-    bubbleElement.addEventListener('touchmove', () => clearTimeout(pressTimer));
-}
-
-// --- NEW MENU LOGIC ---
-function openContextMenu(e, msgId, content) {
-    e.preventDefault(); // Stop standard browser menu
-    
-    activeMessageId = msgId;
-    activeMessageContent = content;
-
-    const menu = document.getElementById('message-context-menu');
-    menu.style.display = 'flex';
-
-    // Figure out where they clicked/touched
-    let x = e.clientX || (e.touches && e.touches[0].clientX);
-    let y = e.clientY || (e.touches && e.touches[0].clientY);
-
-    // Keep the menu from going off the edge of the screen
-    if (x + 220 > window.innerWidth) x = window.innerWidth - 230;
-    if (y + menu.offsetHeight > window.innerHeight) y = window.innerHeight - menu.offsetHeight - 20;
-
-    menu.style.left = `${x}px`;
-    menu.style.top = `${y}px`;
-}
-
-// Close menu if clicking anywhere else
-document.addEventListener('click', (e) => {
-    if (!e.target.closest('#message-context-menu') && !e.target.closest('.bubble')) {
-        document.getElementById('message-context-menu').style.display = 'none';
-    }
-});
-
-// Handle the button clicks
-function handleMenuAction(action) {
-    document.getElementById('message-context-menu').style.display = 'none'; // Hide menu
-    
-    if (!activeMessageId) return;
-
-    if (action === 'copy') {
-        navigator.clipboard.writeText(activeMessageContent).then(() => {
-            console.log("Message copied!");
-        });
-    } 
-    else if (action === 'delete') {
-        // This links perfectly to the delete_message socket event you already have in fael.py!
-        if(confirm("Are you sure you want to delete this message?")) {
-            socket.emit('delete_message', { msg_id: activeMessageId, sender_id: myID });
-        }
-    } 
-    else {
-        // Placeholders for Reply, Edit, Forward, Select
-        alert(`You clicked ${action}. This feature is coming soon!`);
-    }
-}
-
-    function loadRecentChats() {
-        fetch('/recent_chats/' + myID).then(res => res.json()).then(chats => {
-            const list = document.getElementById('chat-list'); list.innerHTML = "";
-            chats.forEach(chat => {
-                const div = document.createElement('div');
-                div.className = 'chat-row';
-                div.innerHTML = `
-                    <div class="avatar" style="${chat.pfp ? 'background-image:url('+chat.pfp+')' : ''}">${chat.pfp ? '' : chat.name.charAt(0)}</div>
-                    <div class="chat-info"><b>${chat.name}</b><br><small>${chat.last_msg}</small></div>
-                `;
-                div.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.is_group);
-                list.appendChild(div);
-            });
-        });
-    }
-
-    function sendMsg() {
-        const val = document.getElementById('msg-input').value; if(!val) return;
-        const room = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
-        socket.emit('private_message', { room: room, sender_id: myID, sender_name: myName, target_id: currentTargetID, is_group: isCurrentChatGroup, msg_type: 'text', content: val });
-        document.getElementById('msg-input').value = "";
-    }
-
-    socket.on('new_message', (data) => {
-        const activeRoom = isCurrentChatGroup ? `group_${currentTargetID}` : [myID, currentTargetID].sort().join("_");
-        if(data.room === activeRoom) renderBubble(data);
-    });
-
-    socket.on('ping_radar', () => loadRecentChats());
-    function switchTab(t) {
-        document.getElementById('chats-view').style.display = (t==='chats')?'flex':'none';
-        document.getElementById('settings-view').style.display = (t==='settings')?'block':'none';
-    }
-    function closeChat() { document.getElementById('active-chat').style.display = 'none'; loadRecentChats(); }
-    function toggleAuth() { isSignUp = !isSignUp; document.getElementById('aname').style.display = isSignUp ? 'block' : 'none'; }
-    function handleAuth() {
-        const id = document.getElementById('aid').value;
-        const pass = document.getElementById('apass').value;
-        const name = document.getElementById('aname').value;
-        fetch(isSignUp ? '/signup' : '/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:name, tele_id:id, password:pass}) })
-        .then(res => res.json()).then(data => { if(data.status==='success'){ localStorage.setItem('fID', id); localStorage.setItem('fName', data.username || name); location.reload(); } else alert(data.message); });
-    }
-    function logout() { localStorage.clear(); location.reload(); }
-</script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
-
-
-
-
-what colour is this in privatw chat?
