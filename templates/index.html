@@ -6,61 +6,97 @@
     <title>FelChat</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
-        :root { 
-            --bg: #ffffff; --text: #000000; --subtext: #8e8e93; 
-            --accent: #5e5ce6; --line: #e5e5ea; --gray-bg: #f2f2f7; 
-            --bubble-sent: #fce4ec; 
-            --bubble-recv: #ffffff;
-            --chat-bg: linear-gradient(145deg, #a8edea 0%, #fed6e3 100%);
-        }
+:root { 
+    --bg: #f8f9fc; 
+    --text: #1a1a1a; 
+    --subtext: #6e6e73; 
+    --accent: #6366f1; /* Modern Indigo */
+    --accent-light: #e0e7ff;
+    --line: rgba(0,0,0,0.05); 
+    --glass: rgba(255, 255, 255, 0.8);
+    --bubble-sent: #6366f1; 
+    --bubble-recv: #ffffff;
+    --chat-bg: #f0f2f5;
+}
 
-        body, html { 
-            margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
-            background: var(--bg); height: 100vh; width: 100vw; overflow: hidden; 
-        }
+body, html { 
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; 
+    background: var(--bg); color: var(--text); height: 100vh; width: 100vw; overflow: hidden; 
+}
 
-        #app-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; position: relative; }
+#app-wrapper { width: 100%; height: 100%; display: flex; flex-direction: column; position: relative; }
 
-        #auth-screen { position: absolute; inset: 0; background: var(--chat-bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
-        .auth-box { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(15px); padding: 40px; border-radius: 24px; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+#auth-screen { position: absolute; inset: 0; background: var(--chat-bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.auth-box { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(15px); padding: 40px; border-radius: 24px; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.3); }
 
-        .header { display: flex; justify-content: space-between; align-items: center; padding: 15px 25px; border-bottom: 1px solid var(--line); background: #fff; }
-        .header-title { font-size: 20px; font-weight: 700; }
-        .header-btn { color: var(--accent); font-size: 16px; cursor: pointer; }
+.header { display: flex; justify-content: space-between; align-items: center; padding: 20px 25px; border-bottom: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(20px); }
+.header-title { font-size: 20px; font-weight: 700; }
+.header-btn { color: var(--accent); font-size: 16px; cursor: pointer; font-weight: 500; transition: opacity 0.2s; }
+.header-btn:hover { opacity: 0.8; }
 
-        #content-area { flex: 1; overflow: hidden; position: relative; width: 100%; }
+        .context-menu {
+    position: fixed;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(15px);
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    width: 220px;
+    z-index: 9999;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
 
-        #chats-view { display: flex; flex-direction: column; height: 100%; width: 100%; }
-        
-        /* SEARCH BAR & SUGGESTIONS */
-        .search-bar { padding: 15px 25px; background: var(--bg); border-bottom: 1px solid var(--line); position: relative; }
-        .search-bar input { 
-            width: 100%; padding: 12px 15px; background: var(--gray-bg); 
-            border: none; border-radius: 12px; font-size: 16px; outline: none; box-sizing: border-box;
-        }
-        #suggestions { 
-            position: absolute; top: 70px; left: 25px; right: 25px; 
-            background: white; border-radius: 15px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
-            z-index: 500; max-height: 300px; overflow-y: auto; 
-        }
+.context-menu .menu-item {
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 500;
+    color: #1a1a1a;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    transition: background 0.1s;
+}
 
-        #chat-list { flex: 1; overflow-y: auto; width: 100%; }
-        .chat-row { display: flex; padding: 15px 25px; cursor: pointer; border-bottom: 1px solid #f9f9f9; background: white; align-items: center; }
-        .chat-row:hover { background: #fcfcfc; }
-        .avatar { 
-            width: 55px; height: 55px; border-radius: 50%; 
-            background: var(--accent); color: white; 
-            display: flex; align-items: center; justify-content: center; 
-            font-size: 22px; font-weight: bold; margin-right: 18px; 
-            flex-shrink: 0; background-size: cover; background-position: center;
-        }
+.context-menu .menu-item:last-child { border-bottom: none; }
+.context-menu .menu-item:hover { background: rgba(0,0,0,0.05); }
+.context-menu .menu-item.delete { color: #ff3b30; } /* Red delete text */        
 
-        .bottom-nav { display: flex; justify-content: space-around; padding: 12px 0 25px 0; border-top: 1px solid var(--line); background: #fff; }
-        .nav-item { text-align: center; color: var(--subtext); flex: 1; cursor: pointer; }
-        .nav-item.active { color: var(--accent); }
-        .nav-icon { font-size: 24px; display: block; }
+#content-area { flex: 1; overflow: hidden; position: relative; width: 100%; }
+
+#chats-view { display: flex; flex-direction: column; height: 100%; width: 100%; }
+
+/* SEARCH BAR & SUGGESTIONS */
+.search-bar { padding: 15px 25px; background: transparent; border-bottom: 1px solid var(--line); position: relative; }
+.search-bar input { 
+    width: 100%; padding: 12px 18px; background: rgba(0,0,0,0.04); 
+    border: none; border-radius: 12px; font-size: 16px; outline: none; box-sizing: border-box; color: var(--text);
+}
+#suggestions { 
+    position: absolute; top: 70px; left: 25px; right: 25px; 
+    background: white; border-radius: 15px; 
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15); 
+    z-index: 500; max-height: 300px; overflow-y: auto; 
+}
+
+#chat-list { flex: 1; overflow-y: auto; width: 100%; padding-top: 8px; }
+.chat-row { display: flex; margin: 0 15px 8px 15px; padding: 12px 15px; cursor: pointer; border-radius: 16px; background: transparent; align-items: center; transition: all 0.2s ease; border: none; }
+.chat-row:hover { background: var(--accent-light); transform: translateY(-1px); }
+.avatar { 
+    width: 55px; height: 55px; border-radius: 50%; 
+    background: var(--accent); color: white; 
+    display: flex; align-items: center; justify-content: center; 
+    font-size: 22px; font-weight: bold; margin-right: 18px; 
+    flex-shrink: 0; background-size: cover; background-position: center; box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
+}
+
+.bottom-nav { display: flex; justify-content: space-around; padding: 12px 0 25px 0; border-top: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(20px); }
+.nav-item { text-align: center; color: var(--subtext); flex: 1; cursor: pointer; transition: color 0.2s ease; }
+.nav-item.active { color: var(--accent); font-weight: 600; }
+.nav-icon { font-size: 24px; display: block; margin-bottom: 4px; }
 
         /* ACTIVE CHAT VIEW */
         #active-chat { position: absolute; inset: 0; background: var(--chat-bg); z-index: 600; display: none; flex-direction: column; }
@@ -80,10 +116,32 @@
         
         .base-btn { width: 100%; padding: 14px; background: var(--accent); color: #fff; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; }
         .base-input { width: 100%; padding: 14px; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; outline: none; box-sizing: border-box; }
+        
     </style>
 </head>
 <body>
 
+<div id="message-context-menu" class="context-menu" style="display: none;">
+    <div class="menu-item" onclick="handleMenuAction('reply')">
+        <span>Reply</span> <span>↩️</span>
+    </div>
+    <div class="menu-item" onclick="handleMenuAction('copy')">
+        <span>Copy</span> <span>📄</span>
+    </div>
+    <div class="menu-item" onclick="handleMenuAction('edit')">
+        <span>Edit</span> <span>✏️</span>
+    </div>
+    <div class="menu-item" onclick="handleMenuAction('forward')">
+        <span>Forward</span> <span>↪️</span>
+    </div>
+    <div class="menu-item delete" onclick="handleMenuAction('delete')">
+        <span>Delete</span> <span>🗑️</span>
+    </div>
+    <div class="menu-item" onclick="handleMenuAction('select')">
+        <span>Select</span> <span>☑️</span>
+    </div>
+</div>    
+    
 <div id="app-wrapper">
     
     <div id="auth-screen">
@@ -151,6 +209,9 @@
     let currentTargetID = "";
     let isCurrentChatGroup = false;
     let isSignUp = false;
+    let pressTimer;
+    let activeMessageId = null;
+    let activeMessageContent = "";
 
     if(myID) {
         document.getElementById('auth-screen').style.display = 'none';
@@ -197,16 +258,88 @@
     }
 
     function renderBubble(data) {
-        const win = document.getElementById('messages-view');
-        const wrap = document.createElement('div');
-        wrap.className = `msg-wrapper ${data.sender_id === myID ? 'sent' : 'received'}`;
-        let html = "";
-        if(isCurrentChatGroup && data.sender_id !== myID) {
-            html += `<div class="msg-avatar" style="${data.sender_pfp ? 'background-image:url('+data.sender_pfp+')' : ''}">${data.sender_pfp ? '' : data.sender_name.charAt(0)}</div>`;
-        }
-        html += `<div class="bubble ${data.sender_id === myID ? 'sent' : 'received'}">${data.content}</div>`;
-        wrap.innerHTML = html; win.appendChild(wrap); win.scrollTop = 99999;
+    const win = document.getElementById('messages-view');
+    const wrap = document.createElement('div');
+    wrap.className = `msg-wrapper ${data.sender_id === myID ? 'sent' : 'received'}`;
+    
+    let html = "";
+    if(isCurrentChatGroup && data.sender_id !== myID) {
+        html += `<div class="msg-avatar" style="${data.sender_pfp ? 'background-image:url('+data.sender_pfp+')' : ''}">${data.sender_pfp ? '' : data.sender_name.charAt(0)}</div>`;
     }
+    
+    // We add an ID to the bubble so we can hide it if it gets deleted
+    html += `<div class="bubble ${data.sender_id === myID ? 'sent' : 'received'}" id="msg-bubble-${data.id}">${data.content}</div>`;
+    wrap.innerHTML = html; 
+    win.appendChild(wrap); 
+    win.scrollTop = 99999;
+
+    // --- NEW: LONG PRESS & RIGHT CLICK LISTENERS ---
+    const bubbleElement = wrap.querySelector('.bubble');
+    
+    // Right Click (Desktop)
+    bubbleElement.addEventListener('contextmenu', (e) => {
+        openContextMenu(e, data.id, data.content);
+    });
+
+    // Long Press (Mobile)
+    bubbleElement.addEventListener('touchstart', (e) => {
+        pressTimer = window.setTimeout(() => openContextMenu(e, data.id, data.content), 500); // 500ms hold
+    });
+    bubbleElement.addEventListener('touchend', () => clearTimeout(pressTimer));
+    bubbleElement.addEventListener('touchmove', () => clearTimeout(pressTimer));
+}
+
+// --- NEW MENU LOGIC ---
+function openContextMenu(e, msgId, content) {
+    e.preventDefault(); // Stop standard browser menu
+    
+    activeMessageId = msgId;
+    activeMessageContent = content;
+
+    const menu = document.getElementById('message-context-menu');
+    menu.style.display = 'flex';
+
+    // Figure out where they clicked/touched
+    let x = e.clientX || (e.touches && e.touches[0].clientX);
+    let y = e.clientY || (e.touches && e.touches[0].clientY);
+
+    // Keep the menu from going off the edge of the screen
+    if (x + 220 > window.innerWidth) x = window.innerWidth - 230;
+    if (y + menu.offsetHeight > window.innerHeight) y = window.innerHeight - menu.offsetHeight - 20;
+
+    menu.style.left = `${x}px`;
+    menu.style.top = `${y}px`;
+}
+
+// Close menu if clicking anywhere else
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#message-context-menu') && !e.target.closest('.bubble')) {
+        document.getElementById('message-context-menu').style.display = 'none';
+    }
+});
+
+// Handle the button clicks
+function handleMenuAction(action) {
+    document.getElementById('message-context-menu').style.display = 'none'; // Hide menu
+    
+    if (!activeMessageId) return;
+
+    if (action === 'copy') {
+        navigator.clipboard.writeText(activeMessageContent).then(() => {
+            console.log("Message copied!");
+        });
+    } 
+    else if (action === 'delete') {
+        // This links perfectly to the delete_message socket event you already have in fael.py!
+        if(confirm("Are you sure you want to delete this message?")) {
+            socket.emit('delete_message', { msg_id: activeMessageId, sender_id: myID });
+        }
+    } 
+    else {
+        // Placeholders for Reply, Edit, Forward, Select
+        alert(`You clicked ${action}. This feature is coming soon!`);
+    }
+}
 
     function loadRecentChats() {
         fetch('/recent_chats/' + myID).then(res => res.json()).then(chats => {
