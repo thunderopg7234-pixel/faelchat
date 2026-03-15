@@ -3,24 +3,15 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f172a" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="FelChat" />
-    <meta name="application-name" content="FelChat" />
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/felchat-icon.svg') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/felchat-icon-192.png') }}">
-    <title>FaelChat Ultimate</title>
+    <meta name="theme-color" content="#06131f" />
+    <title>FaelChat Ultra Fusion</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
-<body>
-    <script>window.__IS_STANDALONE__ = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;</script>
+<body data-theme="midnight-cyan">
     <div class="app-shell">
         <section id="auth-screen" class="auth-screen">
             <div class="auth-bg"></div>
@@ -58,27 +49,25 @@
             </div>
         </section>
 
-        <main id="main-app" class="main-app hidden">
+        <main id="main-app" class="main-app hidden" data-mobile-tab="chats">
             <aside class="sidebar glass-card">
                 <div class="sidebar-top">
                     <div>
                         <div class="eyebrow">Your space</div>
                         <h2>Chats</h2>
                     </div>
-                    <div class="header-actions compact">
-                        <button class="icon-btn" onclick="openModal('group-modal')">👥</button>
-                        <button class="icon-btn" onclick="openModal('channel-modal')">📣</button>
-                    </div>
+                    <button class="icon-btn" onclick="openModal('room-modal')">＋</button>
+                </div>
+
+                <div class="filter-row">
+                    <button class="chip active" data-filter="all" onclick="setListFilter('all', this)">All</button>
+                    <button class="chip" data-filter="group" onclick="setListFilter('group', this)">Groups</button>
+                    <button class="chip" data-filter="channel" onclick="setListFilter('channel', this)">Channels</button>
                 </div>
 
                 <div class="search-wrap">
-                    <input id="search-input" placeholder="Search user, group, or channel" oninput="doSearch()" autocomplete="off">
+                    <input id="search-input" placeholder="Search @username, group, channel" oninput="doSearch()" autocomplete="off">
                     <div id="suggestions" class="suggestions"></div>
-                </div>
-
-                <div class="quick-actions">
-                    <button class="quick-chip" onclick="openModal('group-modal')">+ Group</button>
-                    <button class="quick-chip" onclick="openModal('channel-modal')">+ Channel</button>
                 </div>
 
                 <div id="chat-list" class="chat-list"></div>
@@ -88,7 +77,7 @@
                 <div class="empty-center">
                     <div class="empty-icon">💬</div>
                     <h3>Select a chat</h3>
-                    <p>Search a user, open a recent chat, create a group, or launch your own channel.</p>
+                    <p>Search a user ID, open a recent chat, create a group, or launch a channel.</p>
                 </div>
             </section>
 
@@ -107,48 +96,21 @@
                         <div>
                             <h3 id="settings-fullname">Display Name</h3>
                             <p id="settings-id">@username</p>
-                            <small id="settings-bio" class="muted">No bio yet</small>
+                            <small id="settings-bio">No bio yet</small>
                         </div>
                     </div>
-                    <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
+                    <div class="settings-btn-row">
+                        <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
+                        <button class="base-btn secondary" onclick="openModal('profile-modal')">Edit profile</button>
+                    </div>
                     <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="uploadPFP(event)">
                 </div>
 
                 <div class="telegram-card">
-                    <button class="telegram-row" onclick="document.getElementById('pfp-upload').click()">
-                        <span class="row-icon pink">📷</span>
-                        <span>Change Profile Photo</span>
-                    </button>
-                    <button class="telegram-row" onclick="openModal('profile-modal')">
-                        <span class="row-icon pink">✎</span>
-                        <span>Edit Profile</span>
-                    </button>
-                    <button class="telegram-row" onclick="openModal('group-modal')">
-                        <span class="row-icon pink">👥</span>
-                        <span>Create Group</span>
-                    </button>
-                    <button class="telegram-row" onclick="openModal('channel-modal')">
-                        <span class="row-icon pink">📣</span>
-                        <span>Create Channel</span>
-                    </button>
-                    <button class="telegram-row" onclick="logout()">
-                        <span class="row-icon pink">⇥</span>
-                        <span>Log Out</span>
-                    </button>
-                </div>
-
-
-
-                <div class="telegram-card theme-settings-card">
-                    <div class="section-title-wrap">
-                        <div>
-                            <div class="eyebrow">Appearance</div>
-                            <h3>Theme Studio</h3>
-                        </div>
-                        <span class="badge-pill" id="theme-current-pill">Default</span>
-                    </div>
-                    <p class="theme-copy muted">Switch FelChat live and keep your favorite look saved on this device.</p>
-                    <div id="theme-grid" class="theme-grid"></div>
+                    <button class="telegram-row" onclick="openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Theme Studio</span></button>
+                    <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
+                    <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
+                    <button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log Out</span></button>
                 </div>
 
                 <div class="telegram-card account-card">
@@ -162,71 +124,48 @@
                         </div>
                         <span class="badge-pill">You</span>
                     </div>
-                    <button class="telegram-row add-account" onclick="switchToSignUp()">
-                        <span class="row-icon pink">＋</span>
-                        <span>Add Account</span>
-                    </button>
+                    <div class="theme-grid" id="settings-theme-grid"></div>
                 </div>
             </aside>
         </main>
 
         <nav class="mobile-tabbar glass-card hidden" id="mobile-tabbar">
-            <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')">
-                <span class="mobile-tab-ico">💬</span>
-                <span>Chats</span>
-            </button>
-            <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')">
-                <span class="mobile-tab-ico">🗨️</span>
-                <span>Open Chat</span>
-            </button>
-            <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')">
-                <span class="mobile-tab-ico">⚙️</span>
-                <span>Settings</span>
-            </button>
+            <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')"><span class="mobile-tab-ico">💬</span><span>Chats</span></button>
+            <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')"><span class="mobile-tab-ico">🗨️</span><span>Open Chat</span></button>
+            <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')"><span class="mobile-tab-ico">⚙️</span><span>Settings</span></button>
         </nav>
     </div>
 
-    <div id="group-modal" class="modal hidden">
+    <div id="room-modal" class="modal hidden">
         <div class="modal-card glass-card">
-            <div class="modal-top">
-                <h3>Create or Join Group</h3>
-                <button class="icon-btn" onclick="closeModal('group-modal')">✕</button>
+            <div class="modal-top"><h3>Create or Join Room</h3><button class="icon-btn" onclick="closeModal('room-modal')">✕</button></div>
+            <div class="filter-row modal-filter-row">
+                <button class="chip active" id="kind-group" onclick="setRoomKind('group', this)">Group</button>
+                <button class="chip" id="kind-channel" onclick="setRoomKind('channel', this)">Channel</button>
             </div>
-            <input id="group-name" class="base-input" placeholder="Group name">
-            <input id="group-code" class="base-input" placeholder="Group code">
-            <input id="group-description" class="base-input" placeholder="Description (optional)">
+            <input id="room-name" class="base-input" placeholder="Name">
+            <input id="room-code" class="base-input" placeholder="Unique code">
+            <textarea id="room-description" class="base-input textarea" placeholder="Description"></textarea>
             <div class="modal-actions two">
-                <button class="base-btn secondary" onclick="joinGroup()">Join</button>
-                <button class="base-btn" onclick="createGroup()">Create</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="channel-modal" class="modal hidden">
-        <div class="modal-card glass-card">
-            <div class="modal-top">
-                <h3>Create or Join Channel</h3>
-                <button class="icon-btn" onclick="closeModal('channel-modal')">✕</button>
-            </div>
-            <input id="channel-name" class="base-input" placeholder="Channel name">
-            <input id="channel-code" class="base-input" placeholder="Channel code">
-            <input id="channel-description" class="base-input" placeholder="Description / announcement intro">
-            <div class="modal-actions two">
-                <button class="base-btn secondary" onclick="joinChannel()">Join</button>
-                <button class="base-btn" onclick="createChannel()">Create</button>
+                <button class="base-btn secondary" onclick="joinRoom()">Join</button>
+                <button class="base-btn" onclick="createRoom()">Create</button>
             </div>
         </div>
     </div>
 
     <div id="profile-modal" class="modal hidden">
         <div class="modal-card glass-card">
-            <div class="modal-top">
-                <h3>Edit profile</h3>
-                <button class="icon-btn" onclick="closeModal('profile-modal')">✕</button>
-            </div>
+            <div class="modal-top"><h3>Edit profile</h3><button class="icon-btn" onclick="closeModal('profile-modal')">✕</button></div>
             <input id="edit-display-name" class="base-input" placeholder="Display name">
-            <textarea id="edit-bio" class="base-input textarea-input" placeholder="Bio"></textarea>
+            <textarea id="edit-bio" class="base-input textarea" placeholder="Bio"></textarea>
             <button class="base-btn" onclick="saveProfile()">Save Changes</button>
+        </div>
+    </div>
+
+    <div id="theme-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top"><h3>Theme Studio</h3><button class="icon-btn" onclick="closeModal('theme-modal')">✕</button></div>
+            <div class="theme-grid" id="theme-grid"></div>
         </div>
     </div>
 
@@ -240,28 +179,26 @@
                     <h3 id="sheet-name">User</h3>
                     <p id="sheet-handle">@username</p>
                     <span id="sheet-kind" class="badge-pill">Private chat</span>
-                    <small id="sheet-status" class="sheet-subtext">Offline</small>
+                    <small id="sheet-bio">No bio yet</small>
                 </div>
             </div>
-            <div class="sheet-bio-wrap">
-                <strong>About</strong>
-                <p id="sheet-bio" class="sheet-subtext">No bio yet.</p>
-            </div>
             <div class="telegram-card profile-sheet-actions">
-                <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()">
-                    <span class="row-icon pink">📎</span><span>Send media</span>
-                </button>
-                <button class="telegram-row" onclick="copyChatIdentity()">
-                    <span class="row-icon pink">⎘</span><span>Copy ID</span>
-                </button>
-                <button class="telegram-row" onclick="closeProfileSheet(); setMobileTab('settings')">
-                    <span class="row-icon pink">⚙️</span><span>Open settings</span>
-                </button>
+                <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()"><span class="row-icon pink">📎</span><span>Send media</span></button>
+                <button class="telegram-row" onclick="copyChatIdentity()"><span class="row-icon pink">⎘</span><span>Copy ID</span></button>
+                <button class="telegram-row" onclick="closeProfileSheet(); openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Choose theme</span></button>
             </div>
         </div>
     </div>
 
+    <div id="reaction-picker" class="reaction-picker hidden">
+        <button onclick="reactToCurrent('❤️')">❤️</button>
+        <button onclick="reactToCurrent('🔥')">🔥</button>
+        <button onclick="reactToCurrent('😂')">😂</button>
+        <button onclick="reactToCurrent('👍')">👍</button>
+    </div>
+
     <div id="toast" class="toast hidden"></div>
+
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

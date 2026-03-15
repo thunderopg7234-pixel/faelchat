@@ -1,110 +1,40 @@
 const socket = io();
 
+const THEMES = {
+  'midnight-cyan': { label: 'Midnight Cyan', color: '#06131f' },
+  'ocean-blue': { label: 'Ocean Blue', color: '#0b5cff' },
+  'royal-violet': { label: 'Royal Violet', color: '#6f37ff' },
+  'emerald-luxe': { label: 'Emerald Luxe', color: '#0b8d72' },
+  'aurora-glass': { label: 'Aurora Glass', color: '#ee5d92' },
+};
+
 const state = {
   myID: localStorage.getItem('fID') || '',
   myName: localStorage.getItem('fName') || '',
   myPFP: localStorage.getItem('fPFP') || '',
   myBio: localStorage.getItem('fBio') || '',
+  myTheme: localStorage.getItem('fTheme') || 'midnight-cyan',
   currentTargetID: '',
   currentTargetName: '',
   currentTargetPFP: '',
+  currentTargetBio: '',
   currentTargetKind: 'private',
-  currentStatusText: '',
-  mobileTab: 'chats',
+  currentRole: 'member',
+  isCurrentChatGroup: false,
   isSignUp: false,
-  profileCache: {},
+  mobileTab: 'chats',
+  listFilter: 'all',
+  roomKindChoice: 'group',
+  recentChats: [],
+  replyTo: null,
+  activeRoom: '',
+  lastTypingSent: 0,
   typingTimer: null,
-  sentTyping: false,
-  unread: JSON.parse(localStorage.getItem('fUnread') || '{}'),
-  deferredInstallPrompt: null,
-  theme: localStorage.getItem('fTheme') || 'default',
-};
-
-const THEMES = {
-  default: { label: 'Aurora Glass', meta: '#0f172a', note: 'Glassy purple-teal premium' },
-  midnight: { label: 'Midnight Cyan', meta: '#06101f', note: 'Dark luxury with cyan glow' },
-  ocean: { label: 'Ocean Blue', meta: '#215b9f', note: 'Telegram-style clean blue' },
-  royal: { label: 'Royal Violet', meta: '#5b21b6', note: 'Bold purple flagship look' },
-  emerald: { label: 'Emerald Luxe', meta: '#0f766e', note: 'Fresh premium green-teal' },
+  selectedMessageId: null,
+  messageCache: {},
 };
 
 const byId = (id) => document.getElementById(id);
-
-function saveUnread() { localStorage.setItem('fUnread', JSON.stringify(state.unread)); }
-function markUnread(room, increment = true) {
-  if (!room) return;
-  state.unread[room] = increment ? (Number(state.unread[room] || 0) + 1) : Number(state.unread[room] || 0);
-  saveUnread();
-}
-function clearUnread(room) {
-  if (!room) return;
-  delete state.unread[room];
-  saveUnread();
-}
-function updateThemeMeta(theme) {
-  const color = THEMES[theme]?.meta || '#0f172a';
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
-}
-function renderThemeOptions() {
-  const grid = byId('theme-grid');
-  if (!grid) return;
-  grid.innerHTML = Object.entries(THEMES).map(([key, cfg]) => `
-    <button class="theme-option ${state.theme === key ? 'active' : ''}" type="button" onclick="applyTheme('${key}')">
-      <div class="theme-preview theme-swatch-${key}"></div>
-      <strong>${cfg.label}</strong>
-      <small>${cfg.note}</small>
-    </button>`).join('');
-  const pill = byId('theme-current-pill');
-  if (pill) pill.textContent = THEMES[state.theme]?.label || 'Theme';
-}
-function applyTheme(theme = state.theme) {
-  theme = THEMES[theme] ? theme : 'default';
-  state.theme = theme;
-  localStorage.setItem('fTheme', theme);
-  document.body.dataset.theme = theme;
-  updateThemeMeta(theme);
-  renderThemeOptions();
-}
-function ensureUtilityButtons() {
-  renderThemeOptions();
-  applyTheme(state.theme);
-}
-function ensureInstallBanner() {
-  if (byId('install-banner')) return;
-  const app = byId('main-app');
-  if (!app) return;
-  const banner = document.createElement('div');
-  banner.id = 'install-banner';
-  banner.className = 'install-banner glass-card hidden';
-  banner.innerHTML = `<div><strong>Install FelChat</strong><p>Open it fullscreen like a real app.</p></div><div class="install-actions"><button class="base-btn secondary mini-btn" id="install-later-btn" type="button">Later</button><button class="base-btn mini-btn" id="install-now-btn" type="button">Install</button></div>`;
-  app.parentNode.insertBefore(banner, app);
-  byId('install-later-btn').onclick = () => banner.classList.add('hidden');
-  byId('install-now-btn').onclick = async () => {
-    if (state.deferredInstallPrompt) {
-      state.deferredInstallPrompt.prompt();
-      try { await state.deferredInstallPrompt.userChoice; } catch (e) {}
-      state.deferredInstallPrompt = null;
-      banner.classList.add('hidden');
-    } else {
-      showToast('Use Add to Home Screen in your browser menu');
-    }
-  };
-}
-function updateInstallBanner() {
-  const banner = byId('install-banner');
-  if (!banner) return;
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  banner.classList.toggle('hidden', standalone || (!state.deferredInstallPrompt && !/iphone|ipad|ipod/i.test(navigator.userAgent)));
-}
-
-if (window.__IS_STANDALONE__) {
-  document.body.classList.add('standalone-mode');
-}
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/static/sw.js').catch(() => {});
-  });
-}
 const escapeHtml = (str = '') => String(str)
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -115,298 +45,297 @@ const escapeHtml = (str = '') => String(str)
 function normalizeHandle(value = '') {
   return value.trim().replace(/^@+/, '').replace(/\s+/g, '').toLowerCase();
 }
-function getInitial(name = '?') { return (name || '?').trim().charAt(0).toUpperCase(); }
+
+function getInitial(name = '?') {
+  return (name || '?').trim().charAt(0).toUpperCase();
+}
+
 function setAvatar(el, name, pfp) {
   if (!el) return;
   el.style.backgroundImage = pfp ? `url(${pfp})` : '';
   el.textContent = pfp ? '' : getInitial(name);
 }
+
 function showToast(message) {
   const toast = byId('toast');
   toast.textContent = message;
   toast.classList.remove('hidden');
   clearTimeout(showToast.timer);
-  showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2400);
+  showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2200);
 }
-function isMobileLayout() { return window.innerWidth <= 980; }
-function kindLabel(kind) {
-  if (kind === 'group') return 'Group chat';
-  if (kind === 'channel') return 'Channel';
-  return 'Private chat';
+
+function applyTheme(themeKey, persist = true) {
+  const safe = THEMES[themeKey] ? themeKey : 'midnight-cyan';
+  state.myTheme = safe;
+  document.body.dataset.theme = safe;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEMES[safe].color);
+  if (persist) localStorage.setItem('fTheme', safe);
+  renderThemeCards();
 }
-function buildRoom(id, kind) {
-  if (kind === 'group') return `group_${id}`;
-  if (kind === 'channel') return `channel_${id}`;
-  return [state.myID, id].sort().join('_');
+
+function renderThemeCards() {
+  const html = Object.entries(THEMES).map(([key, info]) => `
+    <button class="theme-card ${state.myTheme === key ? 'active' : ''}" onclick="chooseTheme('${key}')">
+      <span class="theme-swatch theme-${key}"></span>
+      <strong>${info.label}</strong>
+    </button>
+  `).join('');
+  const grid = byId('theme-grid');
+  const settings = byId('settings-theme-grid');
+  if (grid) grid.innerHTML = html;
+  if (settings) settings.innerHTML = html;
 }
-function formatTime(iso, full = false) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  if (full) {
-    return d.toLocaleString([], { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' });
-  }
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-}
-function formatPresence(isOnline, lastSeenAt) {
-  if (isOnline) return 'Online';
-  if (!lastSeenAt) return 'Offline';
-  return `Last seen ${formatTime(lastSeenAt, true)}`;
+
+async function chooseTheme(themeKey) {
+  applyTheme(themeKey);
+  if (!state.myID) return;
+  await fetch('/update_profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tele_id: state.myID, username: state.myName, bio: state.myBio, theme: themeKey })
+  });
 }
 
 function toggleAuth(forceSignUp = null) {
   state.isSignUp = forceSignUp === null ? !state.isSignUp : Boolean(forceSignUp);
   byId('display-name-wrap').classList.toggle('hidden', !state.isSignUp);
-  byId('abtn').textContent = state.isSignUp ? 'Create Account' : 'Log In';
+  byId('abtn').textContent = state.isSignUp ? 'Create account' : 'Log In';
   byId('auth-title').textContent = state.isSignUp ? 'Create your account' : 'Welcome back';
-  byId('auth-subtitle').textContent = state.isSignUp ? 'Sign up with a display name, @username, and password.' : 'Log in with your @username and password.';
+  byId('auth-subtitle').textContent = state.isSignUp ? 'Choose a display name, @username, and password.' : 'Log in with your @username and password.';
   byId('auth-switch-text').textContent = state.isSignUp ? 'Already have an account?' : 'Don’t have an account?';
   byId('auth-switch-link').textContent = state.isSignUp ? 'Log in' : 'Sign up';
 }
-function switchToSignUp() {
-  logout(false);
-  toggleAuth(true);
-}
+
+function switchToSignUp() { toggleAuth(true); }
 
 async function handleAuth() {
-  const username = byId('aname').value.trim();
   const tele_id = normalizeHandle(byId('aid').value);
   const password = byId('apass').value.trim();
-  if (!tele_id || !password || (state.isSignUp && !username)) {
-    showToast('Fill all fields');
-    return;
-  }
-  const route = state.isSignUp ? '/signup' : '/login';
-  const res = await fetch(route, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, tele_id, password })
-  });
+  const username = byId('aname').value.trim();
+  const endpoint = state.isSignUp ? '/signup' : '/login';
+  const payload = state.isSignUp ? { username, tele_id, password } : { tele_id, password };
+  const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await res.json();
-  if (data.status !== 'success') {
-    showToast(data.message || 'Could not continue');
-    return;
-  }
+  if (data.status !== 'success') return showToast(data.message || 'Could not continue');
   state.myID = data.tele_id;
   state.myName = data.username;
   state.myPFP = data.pfp || '';
   state.myBio = data.bio || '';
+  applyTheme(data.theme || state.myTheme, false);
   localStorage.setItem('fID', state.myID);
   localStorage.setItem('fName', state.myName);
   localStorage.setItem('fPFP', state.myPFP);
   localStorage.setItem('fBio', state.myBio);
-  byId('aid').value = '';
-  byId('apass').value = '';
-  byId('aname').value = '';
+  localStorage.setItem('fTheme', state.myTheme);
   startSession();
 }
 
 function hydrateProfile() {
-  byId('auth-screen').classList.add('hidden');
-  byId('main-app').classList.remove('hidden');
-  byId('mobile-tabbar').classList.remove('hidden');
-  byId('settings-fullname').textContent = state.myName;
-  byId('settings-fullname-2').textContent = state.myName;
-  byId('settings-id').textContent = `@${state.myID}`;
-  byId('settings-id-2').textContent = `@${state.myID}`;
-  byId('settings-bio').textContent = state.myBio || 'No bio yet';
-  byId('edit-display-name').value = state.myName;
-  byId('edit-bio').value = state.myBio || '';
   setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
   setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
-  ensureUtilityButtons();
-  ensureInstallBanner();
-  updateInstallBanner();
-  setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : 'chats');
+  byId('settings-fullname').textContent = state.myName;
+  byId('settings-id').textContent = `@${state.myID}`;
+  byId('settings-bio').textContent = state.myBio || 'No bio yet';
+  byId('settings-fullname-2').textContent = state.myName;
+  byId('settings-id-2').textContent = `@${state.myID}`;
+  byId('edit-display-name').value = state.myName;
+  byId('edit-bio').value = state.myBio;
 }
 
-async function startSession() {
-  hydrateProfile();
-  socket.emit('presence_online', { my_id: state.myID });
-  await loadRecentChats();
+function maybeShowMobileTabs() {
+  byId('mobile-tabbar').classList.toggle('hidden', !state.myID);
 }
 
-function logout(show = true) {
-  if (state.myID) socket.emit('presence_offline', { my_id: state.myID });
-  Object.assign(state, { myID: '', myName: '', myPFP: '', myBio: '', currentTargetID: '', currentTargetName: '', currentTargetPFP: '', currentTargetKind: 'private' });
-  localStorage.removeItem('fID');
-  localStorage.removeItem('fName');
-  localStorage.removeItem('fPFP');
-  localStorage.removeItem('fBio');
-  byId('auth-screen').classList.remove('hidden');
-  byId('main-app').classList.add('hidden');
-  byId('mobile-tabbar').classList.add('hidden');
-  document.body.classList.remove('chat-open');
-  byId('chat-panel').className = 'chat-panel glass-card empty-state';
-  byId('chat-panel').innerHTML = `<div class="empty-center"><div class="empty-icon">💬</div><h3>Select a chat</h3><p>Search a user, open a recent chat, create a group, or launch your own channel.</p></div>`;
-  if (show) showToast('Logged out');
-}
+function isMobileLayout() { return window.innerWidth <= 980; }
 
 function setMobileTab(tab) {
   state.mobileTab = tab;
-  const main = byId('main-app');
-  main.dataset.mobileTab = tab;
-  ['chats', 'chat', 'settings'].forEach((name) => byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab));
-  document.body.classList.toggle('chat-open', tab === 'chat' && isMobileLayout() && Boolean(state.currentTargetID));
+  byId('main-app').dataset.mobileTab = tab;
+  document.querySelectorAll('.mobile-tab-btn').forEach((btn) => btn.classList.remove('active'));
+  byId(`tab-btn-${tab}`)?.classList.add('active');
 }
-function closeCurrentChat() {
-  state.currentTargetID = '';
-  document.body.classList.remove('chat-open');
-  setMobileTab('chats');
+
+function setListFilter(filter, el) {
+  state.listFilter = filter;
+  document.querySelectorAll('.chip[data-filter]').forEach((chip) => chip.classList.remove('active'));
+  el?.classList.add('active');
+  renderRecentChats();
 }
+
+function setRoomKind(kind, el) {
+  state.roomKindChoice = kind;
+  document.querySelectorAll('.modal-filter-row .chip').forEach((chip) => chip.classList.remove('active'));
+  el?.classList.add('active');
+}
+
 function openModal(id) { byId(id).classList.remove('hidden'); }
 function closeModal(id) { byId(id).classList.add('hidden'); }
 
-async function saveProfile() {
-  const username = byId('edit-display-name').value.trim();
-  const bio = byId('edit-bio').value.trim();
-  if (!username) return showToast('Display name is required');
-  const res = await fetch('/update_profile', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tele_id: state.myID, username, bio })
-  });
-  const data = await res.json();
-  if (data.status !== 'success') return showToast(data.message || 'Could not update profile');
-  state.myName = data.username;
-  state.myBio = data.bio || '';
-  localStorage.setItem('fName', state.myName);
-  localStorage.setItem('fBio', state.myBio);
+function formatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDayTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function formatRelativeStatus(raw) {
+  if (!raw) return 'offline';
+  if (raw === 'online') return 'online';
+  if (raw.startsWith('last seen ')) {
+    const iso = raw.slice(10);
+    const d = new Date(iso);
+    if (!Number.isNaN(d.getTime())) return `last seen ${formatDayTime(iso)}`;
+  }
+  return raw;
+}
+
+function openProfileSheet() {
+  setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP);
+  byId('sheet-name').textContent = state.currentTargetName || 'User';
+  byId('sheet-handle').textContent = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
+  byId('sheet-kind').textContent = state.currentTargetKind;
+  byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
+  byId('chat-profile-sheet').classList.remove('hidden');
+}
+
+function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
+function copyChatIdentity() { navigator.clipboard?.writeText(state.currentTargetID || ''); showToast('Copied'); }
+
+async function startSession() {
+  byId('auth-screen').classList.add('hidden');
+  byId('main-app').classList.remove('hidden');
+  maybeShowMobileTabs();
   hydrateProfile();
-  closeModal('profile-modal');
+  renderThemeCards();
+  applyTheme(state.myTheme, false);
+  socket.emit('connect_radar', { my_id: state.myID });
   await loadRecentChats();
-  showToast('Profile updated');
+}
+
+function logout() {
+  localStorage.clear();
+  location.reload();
 }
 
 async function loadRecentChats() {
-  if (!state.myID) return;
   const res = await fetch(`/recent_chats/${encodeURIComponent(state.myID)}`);
-  const chats = await res.json();
-  const list = byId('chat-list');
-  list.innerHTML = '';
-  chats.forEach((chat) => {
-    const row = document.createElement('button');
-    row.className = 'chat-row';
-    row.dataset.chatId = chat.id;
-    row.dataset.kind = chat.kind;
-    row.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.kind, chat);
-    row.innerHTML = `
-      <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
-      <div class="chat-meta">
-        <strong>${escapeHtml(chat.name)}</strong>
-        <small class="muted">${escapeHtml(chat.kind === 'private' ? formatPresence(chat.is_online, chat.last_seen_at) : kindLabel(chat.kind))}</small>
-        <p>${escapeHtml(chat.last_msg || '')}</p>
-      </div>
-      <div class="chat-side">
-        <small class="muted">${chat.timestamp ? formatTime(chat.timestamp) : ''}</small>
-        <div class="chat-side-bottom">
-          <span class="tag">${chat.kind}</span>
-          ${state.unread[buildRoom(chat.id, chat.kind)] ? `<span class="unread-badge">${Math.min(state.unread[buildRoom(chat.id, chat.kind)], 99)}</span>` : ''}
-        </div>
-      </div>`;
-    list.appendChild(row);
-    setAvatar(row.querySelector('.avatar'), chat.name, chat.pfp);
-    if (state.currentTargetID === chat.id && state.currentTargetKind === chat.kind) row.classList.add('active');
-  });
+  state.recentChats = await res.json();
+  renderRecentChats();
 }
 
-
-function setSearchDropdownState(active) {
-  const wrap = byId('search-input')?.closest('.search-wrap');
-  if (!wrap) return;
-  wrap.classList.toggle('searching', !!active);
+function renderRecentChats() {
+  const list = byId('chat-list');
+  const filtered = state.recentChats.filter((item) => state.listFilter === 'all' || (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter);
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty-mini">No chats yet</div>';
+    return;
+  }
+  list.innerHTML = filtered.map((item) => {
+    const kind = item.kind || (item.is_group ? 'group' : 'private');
+    const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'person';
+    const statusText = item.is_group ? `${kind}${item.role ? ` · ${item.role}` : ''}` : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+    return `
+      <div class="chat-row ${state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group) ? 'active' : ''}" data-chat-id="${item.id}" data-group="${item.is_group}" onclick="openChat(${JSON.stringify(item.name)}, ${JSON.stringify(item.id)}, ${JSON.stringify(item.pfp || '')}, ${item.is_group}, ${JSON.stringify(item)})">
+        <div class="avatar-row-wrap">
+          <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="chat-meta">
+          <div class="row-between"><strong>${escapeHtml(item.name)}</strong><small>${formatTime(item.time)}</small></div>
+          <p>${escapeHtml(item.last_msg || statusText)}</p>
+          <small class="muted">${escapeHtml(statusText)}</small>
+        </div>
+        <span class="tag">${badge}</span>
+      </div>
+    `;
+  }).join('');
 }
 
 async function doSearch() {
   const q = byId('search-input').value.trim();
-  const sug = byId('suggestions');
+  const suggestions = byId('suggestions');
   if (!q) {
-    sug.classList.remove('show');
-    sug.innerHTML = '';
-    setSearchDropdownState(false);
+    suggestions.innerHTML = '';
+    suggestions.classList.remove('show');
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
-  const items = await res.json();
-  sug.innerHTML = '';
-  if (!items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'suggestion-row';
-    empty.innerHTML = `<div class="chat-meta"><strong>No results</strong><p>Try another name, group, or channel.</p></div>`;
-    sug.appendChild(empty);
+  const rows = await res.json();
+  suggestions.classList.add('show');
+  suggestions.innerHTML = rows.length ? rows.map((item) => {
+    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Read-only by default' : 'Group room');
+    const isGroup = item.type !== 'user';
+    return `
+      <div class="suggestion-row" onclick="chooseSuggestion(${JSON.stringify(item)})">
+        <div class="avatar-row-wrap">
+          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="chat-meta">
+          <strong>${escapeHtml(item.name)}</strong>
+          <p>${escapeHtml(isGroup ? item.description || item.id : '@' + item.id)}</p>
+          <small class="muted">${escapeHtml(label)}</small>
+        </div>
+        <span class="tag">${escapeHtml(item.type)}</span>
+      </div>`;
+  }).join('') : '<div class="empty-mini">No results</div>';
+}
+
+async function chooseSuggestion(item) {
+  byId('search-input').value = '';
+  byId('suggestions').classList.remove('show');
+  if (item.type === 'user') {
+    openChat(item.name, item.id, item.pfp || '', false, item);
+  } else {
+    const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: item.id, tele_id: state.myID }) });
+    const data = await res.json();
+    if (data.status !== 'success') return showToast(data.message || 'Could not join');
+    showToast(`Joined ${item.type}`);
+    await loadRecentChats();
+    openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
   }
-  items.forEach((item) => {
-    const row = document.createElement('button');
-    row.className = 'suggestion-row';
-    const subtitle = item.type === 'user' ? formatPresence(item.is_online, item.last_seen_at) : (item.description || kindLabel(item.type));
-    row.innerHTML = `<div class="avatar"></div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
-    setAvatar(row.querySelector('.avatar'), item.name, item.pfp);
-    row.onclick = async () => {
-      byId('search-input').value = '';
-      sug.classList.remove('show');
-      setSearchDropdownState(false);
-      await openChat(item.name, item.id, item.pfp, item.type === 'user' ? 'private' : item.type, item);
-    };
-    sug.appendChild(row);
-  });
-  sug.classList.add('show');
-  setSearchDropdownState(true);
 }
 
-async function createGroup() {
-  const name = byId('group-name').value.trim();
-  const code = normalizeHandle(byId('group-code').value);
-  const description = byId('group-description').value.trim();
-  if (!name || !code) return showToast('Fill group name and code');
-  const res = await fetch('/create_group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, description, creator_id: state.myID }) });
+async function createRoom() {
+  const payload = {
+    name: byId('room-name').value.trim(),
+    code: byId('room-code').value.trim(),
+    description: byId('room-description').value.trim(),
+    creator_id: state.myID,
+    kind: state.roomKindChoice,
+  };
+  const res = await fetch('/create_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   const data = await res.json();
-  if (data.status !== 'success') return showToast(data.message || 'Could not create group');
-  closeModal('group-modal');
-  ['group-name', 'group-code', 'group-description'].forEach((id) => byId(id).value = '');
+  if (data.status !== 'success') return showToast(data.message || 'Could not create room');
+  closeModal('room-modal');
+  ['room-name','room-code','room-description'].forEach((id) => byId(id).value = '');
   await loadRecentChats();
-  await openChat(data.group.name, data.group.code, data.group.pfp, 'group', data.group);
-  showToast('Group created');
-}
-async function joinGroup() {
-  const code = normalizeHandle(byId('group-code').value);
-  if (!code) return showToast('Enter a group code');
-  const res = await fetch('/join_group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, tele_id: state.myID }) });
-  const data = await res.json();
-  if (data.status !== 'success') return showToast(data.message || 'Could not join group');
-  closeModal('group-modal');
-  ['group-name', 'group-code', 'group-description'].forEach((id) => byId(id).value = '');
-  await loadRecentChats();
-  await openChat(data.group.name, data.group.code, data.group.pfp, 'group', data.group);
-  showToast('Joined group');
-}
-async function createChannel() {
-  const name = byId('channel-name').value.trim();
-  const code = normalizeHandle(byId('channel-code').value);
-  const description = byId('channel-description').value.trim();
-  if (!name || !code) return showToast('Fill channel name and code');
-  const res = await fetch('/create_channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, description, owner_id: state.myID }) });
-  const data = await res.json();
-  if (data.status !== 'success') return showToast(data.message || 'Could not create channel');
-  closeModal('channel-modal');
-  ['channel-name', 'channel-code', 'channel-description'].forEach((id) => byId(id).value = '');
-  await loadRecentChats();
-  await openChat(data.channel.name, data.channel.code, data.channel.pfp, 'channel', data.channel);
-  showToast('Channel created');
-}
-async function joinChannel() {
-  const code = normalizeHandle(byId('channel-code').value);
-  if (!code) return showToast('Enter a channel code');
-  const res = await fetch('/join_channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, tele_id: state.myID }) });
-  const data = await res.json();
-  if (data.status !== 'success') return showToast(data.message || 'Could not join channel');
-  closeModal('channel-modal');
-  ['channel-name', 'channel-code', 'channel-description'].forEach((id) => byId(id).value = '');
-  await loadRecentChats();
-  await openChat(data.channel.name, data.channel.code, data.channel.pfp, 'channel', data.channel);
-  showToast('Joined channel');
+  openChat(data.room.name, data.room.code, data.room.pfp || '', true, { ...data.room, role: 'owner' });
+  showToast(`${data.room.kind} created`);
 }
 
-function renderChatPanel(name, pfp, kind, details = {}) {
+async function joinRoom() {
+  const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: byId('room-code').value.trim(), tele_id: state.myID }) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not join');
+  closeModal('room-modal');
+  await loadRecentChats();
+  openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
+}
+
+function buildRoom(id, isGroup) {
+  return isGroup ? `group_${id}` : [state.myID, id].sort().join('_');
+}
+
+function renderChatPanel(name, pfp, isGroup) {
   const panel = byId('chat-panel');
-  const isOwner = kind === 'channel' && details.owner_id === state.myID;
   panel.className = 'chat-panel glass-card';
   panel.innerHTML = `
     <div class="chat-shell">
@@ -416,133 +345,171 @@ function renderChatPanel(name, pfp, kind, details = {}) {
           <div id="chat-header-avatar" class="avatar"></div>
           <div class="chat-header-meta">
             <strong id="chat-header-name"></strong>
-            <p id="chat-header-status">${escapeHtml(details.status_text || kindLabel(kind))}</p>
+            <p id="chat-status-text">Loading…</p>
           </div>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" onclick="shareCurrentChat()">🔗</button>
           <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+          <button class="icon-btn" onclick="openModal('theme-modal')">🎨</button>
         </div>
       </div>
-      ${kind === 'channel' && !isOwner ? '<div class="channel-banner">Broadcast channel — only the owner can post updates.</div>' : ''}
+      <div id="pin-banner" class="pin-banner hidden"></div>
+      <div id="reply-preview" class="reply-preview hidden"></div>
       <div id="messages-view" class="messages-view"></div>
-      <div class="typing-indicator" id="typing-indicator"></div>
       <div class="chat-input-area">
         <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
         <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
-        <input type="text" id="msg-input" placeholder="${kind === 'channel' && !isOwner ? 'Read only channel' : 'Type a message'}" ${kind === 'channel' && !isOwner ? 'disabled' : ''}>
-        <button class="send-btn" onclick="sendMsg()" ${kind === 'channel' && !isOwner ? 'disabled' : ''}>➤</button>
+        <input type="text" id="msg-input" placeholder="Type a message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
+        <button class="send-btn" onclick="sendMsg()">➤</button>
       </div>
     </div>`;
   byId('chat-header-name').textContent = name;
   setAvatar(byId('chat-header-avatar'), name, pfp);
-  const input = byId('msg-input');
-  if (input && !input.disabled) {
-    input.addEventListener('keydown', (event) => { if (event.key === 'Enter') sendMsg(); });
-    input.addEventListener('input', emitTypingPulse);
-  }
 }
 
-async function openChat(name, id, pfp, kind = 'private', preview = {}) {
+function renderReplyPreview() {
+  const box = byId('reply-preview');
+  if (!box) return;
+  if (!state.replyTo) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    return;
+  }
+  box.classList.remove('hidden');
+  box.innerHTML = `
+    <div><strong>Replying to ${escapeHtml(state.replyTo.sender_name)}</strong><p>${escapeHtml(state.replyTo.content || `[${state.replyTo.msg_type}]`)}</p></div>
+    <button class="icon-btn" onclick="clearReply()">✕</button>`;
+}
+
+function clearReply() { state.replyTo = null; renderReplyPreview(); }
+
+function updateChatHeaderStatus(text) { if (byId('chat-status-text')) byId('chat-status-text').textContent = text; }
+
+async function openChat(name, id, pfp, isGroup, meta = {}) {
+  if (state.activeRoom) socket.emit('leave_chat', { room: state.activeRoom });
   state.currentTargetID = id;
   state.currentTargetName = name;
   state.currentTargetPFP = pfp || '';
-  state.currentTargetKind = kind;
-  state.currentStatusText = preview.status_text || kindLabel(kind);
-  renderChatPanel(name, pfp, kind, preview);
-  document.querySelectorAll('.chat-row').forEach((el) => el.classList.toggle('active', el.dataset.chatId === id && el.dataset.kind === kind));
-
-  const room = buildRoom(id, kind);
-  clearUnread(room);
+  state.currentTargetBio = meta.bio || meta.description || '';
+  state.currentTargetKind = meta.kind || (isGroup ? 'group' : 'private');
+  state.currentRole = meta.role || 'member';
+  state.isCurrentChatGroup = isGroup;
+  state.replyTo = null;
+  renderChatPanel(name, pfp, isGroup);
+  renderReplyPreview();
+  const room = buildRoom(id, isGroup);
+  state.activeRoom = room;
   socket.emit('join_chat', { room });
-  const [historyRes, profileRes] = await Promise.all([
-    fetch(`/history/${encodeURIComponent(room)}`),
-    fetch(`/profile/${encodeURIComponent(id)}`),
-  ]);
-  const msgs = await historyRes.json();
-  const profile = await profileRes.json();
-  if (profile.status === 'success') state.profileCache[id] = profile;
-  applyHeaderProfile(profile.status === 'success' ? profile : preview);
-
+  const res = await fetch(`/history/${encodeURIComponent(room)}`);
+  const msgs = await res.json();
+  state.messageCache = {};
   const view = byId('messages-view');
-  view.innerHTML = '';
-  msgs.forEach(renderBubble);
+  view.innerHTML = msgs.map(messageHtml).join('');
+  bindMessageActions();
   view.scrollTop = view.scrollHeight;
+  if (isGroup) {
+    const metaRes = await fetch(`/room_meta/${encodeURIComponent(id)}`);
+    const metaData = await metaRes.json();
+    if (metaData.status === 'success') {
+      state.currentTargetBio = metaData.room.description || '';
+      state.currentTargetKind = metaData.room.kind;
+      showPinBanner(metaData.room.pin_message);
+      updateChatHeaderStatus(`${metaData.room.kind} · ${metaData.room.member_count} members`);
+    }
+  } else {
+    const pRes = await fetch(`/profile/${encodeURIComponent(id)}`);
+    const pdata = await pRes.json();
+    if (pdata.status === 'success') {
+      state.currentTargetBio = pdata.bio || '';
+      updateChatHeaderStatus(formatRelativeStatus(pdata.last_seen_label || (pdata.online ? 'online' : 'offline')));
+    }
+  }
+  renderRecentChats();
   if (isMobileLayout()) setMobileTab('chat');
 }
 
-function applyHeaderProfile(profile) {
-  if (!profile) return;
-  const statusEl = byId('chat-header-status');
-  if (statusEl) {
-    if (profile.kind === 'user' || state.currentTargetKind === 'private') {
-      statusEl.textContent = formatPresence(profile.is_online, profile.last_seen_at);
-    } else if (profile.kind === 'channel') {
-      statusEl.textContent = `${profile.member_count || 0} subscribers`;
-    } else {
-      statusEl.textContent = `${profile.member_count || 0} members`;
-    }
+function showPinBanner(pinMessage) {
+  const banner = byId('pin-banner');
+  if (!banner) return;
+  if (!pinMessage) {
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    return;
   }
+  banner.classList.remove('hidden');
+  banner.innerHTML = `<span>📌 ${escapeHtml(pinMessage.sender_name)}: ${escapeHtml(pinMessage.content || `[${pinMessage.msg_type}]`)}</span>`;
 }
 
 function messageBodyHtml(data) {
-  if (data.is_deleted) return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'} deleted">Message deleted</div>`;
-  if (data.msg_type === 'image') return `<div class="image-wrap"><img class="message-media" src="${data.file_url}" alt="${escapeHtml(data.content || 'image')}"></div>`;
-  if (data.msg_type === 'video') return `<div class="video-wrap"><video class="message-media" src="${data.file_url}" controls></video></div>`;
-  if (data.msg_type === 'audio') return `<div class="audio-wrap"><audio src="${data.file_url}" controls></audio></div>`;
-  if (data.msg_type === 'file') return `<a class="file-card" href="${data.file_url}" target="_blank"><span>📄</span><span>${escapeHtml(data.content || 'file')}</span></a>`;
-  return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${escapeHtml(data.content)}</div>`;
+  if (data.is_deleted) return '<div class="bubble deleted">Message deleted</div>';
+  const bubbleClass = data.sender_id === state.myID ? 'sent' : 'received';
+  const safeText = data.content ? `<div>${escapeHtml(data.content).replaceAll('\n', '<br>')}</div>` : '';
+  const reply = data.reply_preview ? `<div class="reply-card"><strong>${escapeHtml(data.reply_preview.sender_name)}</strong><p>${escapeHtml(data.reply_preview.content || '[' + data.reply_preview.msg_type + ']')}</p></div>` : '';
+  if (data.msg_type === 'image') return `<div class="bubble ${bubbleClass} image-wrap">${reply}<img class="message-media" src="${data.file_url}" alt="image">${safeText}</div>`;
+  if (data.msg_type === 'video') return `<div class="bubble ${bubbleClass} video-wrap">${reply}<video class="message-media" src="${data.file_url}" controls playsinline></video>${safeText}</div>`;
+  if (data.msg_type === 'audio') return `<div class="bubble ${bubbleClass} audio-wrap">${reply}<audio src="${data.file_url}" controls></audio>${safeText}</div>`;
+  if (data.msg_type === 'file') return `<div class="bubble ${bubbleClass}">${reply}<a class="file-card" href="${data.file_url}" target="_blank"><span>📁</span><span>${escapeHtml(data.content || 'Open file')}</span></a></div>`;
+  return `<div class="bubble ${bubbleClass}">${reply}${safeText}</div>`;
 }
+
+function messageHtml(data) {
+  state.messageCache[data.id] = data;
+  const sent = data.sender_id === state.myID;
+  return `
+    <div class="msg-wrapper ${sent ? 'sent' : 'received'}" data-msg-id="${data.id}">
+      ${sent ? '' : `<div class="avatar mini" style="background-image:${data.sender_pfp ? `url(${data.sender_pfp})` : 'none'}">${data.sender_pfp ? '' : escapeHtml(getInitial(data.sender_name))}</div>`}
+      <div class="msg-stack">
+        ${!sent && state.isCurrentChatGroup ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
+        ${messageBodyHtml(data)}
+        <div class="bubble-time">${formatTime(data.timestamp)} ${data.edited_at ? '· edited' : ''}</div>
+        <div class="message-actions">
+          <button onclick="prepareReplyById(${data.id})">Reply</button>
+          <button onclick="openReactionPicker(${data.id}, this)">React</button>
+          ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button onclick="deleteMyMessage(${data.id})">Delete</button>` : ''}
+          ${state.isCurrentChatGroup && ['owner','admin'].includes(state.currentRole) ? `<button onclick="pinMessage(${data.id})">Pin</button>` : ''}
+        </div>
+        <div class="reaction-row">${(data.reactions || []).map((r) => `<button class="reaction-pill" onclick="toggleReaction(${data.id}, '${r.emoji}')">${r.emoji} <span>${r.count}</span></button>`).join('')}</div>
+      </div>
+    </div>`;
+}
+
+function bindMessageActions() {}
 
 function renderBubble(data) {
   const view = byId('messages-view');
   if (!view) return;
-  const sent = data.sender_id === state.myID;
-  const wrap = document.createElement('div');
-  wrap.className = `msg-wrapper ${sent ? 'sent' : 'received'}`;
-  wrap.dataset.msgId = data.id;
-  wrap.innerHTML = `
-    ${sent ? '' : '<div class="avatar small-avatar"></div>'}
-    <div class="msg-stack">
-      ${!sent && state.currentTargetKind !== 'private' ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
-      ${messageBodyHtml(data)}
-      <div class="bubble-time">${formatTime(data.timestamp)}${sent ? ' · double tap to delete' : ''}</div>
-    </div>`;
-  if (!sent) setAvatar(wrap.querySelector('.avatar'), data.sender_name, data.sender_pfp);
-  if (sent && !data.is_deleted) {
-    wrap.addEventListener('dblclick', () => {
-      if (confirm('Delete this message?')) socket.emit('delete_message', { msg_id: data.id, sender_id: state.myID });
-    });
-  }
-  view.appendChild(wrap);
+  view.insertAdjacentHTML('beforeend', messageHtml(data));
   view.scrollTop = view.scrollHeight;
 }
 
-function emitTypingPulse() {
-  if (!state.currentTargetID) return;
-  const room = buildRoom(state.currentTargetID, state.currentTargetKind);
-  if (!state.sentTyping) {
-    socket.emit('typing', { room, target_id: state.currentTargetID, tele_id: state.myID, name: state.myName, is_typing: true });
-    state.sentTyping = true;
-  }
-  clearTimeout(state.typingTimer);
-  state.typingTimer = setTimeout(() => stopTyping(), 1200);
-}
-function stopTyping() {
-  if (!state.sentTyping || !state.currentTargetID) return;
-  socket.emit('typing', { room: buildRoom(state.currentTargetID, state.currentTargetKind), target_id: state.currentTargetID, tele_id: state.myID, name: state.myName, is_typing: false });
-  state.sentTyping = false;
+function prepareReply(data) {
+  state.replyTo = data;
+  renderReplyPreview();
+  byId('msg-input')?.focus();
 }
 
-function sendMsg() {
+function prepareReplyById(id) {
+  const data = state.messageCache[id];
+  if (data) prepareReply(data);
+}
+
+async function sendMsg() {
   const input = byId('msg-input');
-  if (!input || input.disabled) return;
-  const content = input.value.trim();
-  if (!content || !state.currentTargetID) return;
-  const room = buildRoom(state.currentTargetID, state.currentTargetKind);
-  socket.emit('private_message', { room, sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, msg_type: 'text', content });
+  const val = input.value.trim();
+  if (!state.currentTargetID || !val) return;
+  socket.emit('private_message', {
+    room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
+    sender_id: state.myID,
+    sender_name: state.myName,
+    target_id: state.currentTargetID,
+    is_group: state.isCurrentChatGroup,
+    msg_type: 'text',
+    content: val,
+    reply_to_id: state.replyTo?.id || null,
+  });
   input.value = '';
-  stopTyping();
+  clearReply();
+  socket.emit('typing', { room: state.activeRoom, user_id: state.myID, is_typing: false });
 }
 
 async function uploadMedia(event) {
@@ -554,14 +521,27 @@ async function uploadMedia(event) {
   const data = await res.json();
   event.target.value = '';
   if (data.status !== 'success') return showToast(data.message || 'Upload failed');
-  socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.currentTargetKind), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, msg_type: data.type, content: file.name, file_url: data.url });
+  socket.emit('private_message', {
+    room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
+    sender_id: state.myID,
+    sender_name: state.myName,
+    target_id: state.currentTargetID,
+    is_group: state.isCurrentChatGroup,
+    msg_type: data.type,
+    content: file.name,
+    file_url: data.url,
+    reply_to_id: state.replyTo?.id || null,
+  });
+  clearReply();
 }
 
 async function uploadPFP(event) {
   const file = event.target.files?.[0];
   if (!file) return;
   const fd = new FormData();
-  fd.append('file', file); fd.append('type', 'pfp'); fd.append('tele_id', state.myID);
+  fd.append('file', file);
+  fd.append('type', 'pfp');
+  fd.append('tele_id', state.myID);
   const res = await fetch('/upload', { method: 'POST', body: fd });
   const data = await res.json();
   event.target.value = '';
@@ -573,100 +553,104 @@ async function uploadPFP(event) {
   showToast('Profile photo updated');
 }
 
-async function openProfileSheet() {
-  if (!state.currentTargetID) return;
-  let profile = state.profileCache[state.currentTargetID];
-  if (!profile) {
-    const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}`);
-    profile = await res.json();
-    if (profile.status === 'success') state.profileCache[state.currentTargetID] = profile;
-  }
-  if (profile.status !== 'success') return showToast('Could not open profile');
-  const sheet = byId('chat-profile-sheet');
-  byId('sheet-name').textContent = profile.username || profile.name || state.currentTargetName;
-  byId('sheet-handle').textContent = `@${profile.tele_id || state.currentTargetID}`;
-  byId('sheet-kind').textContent = kindLabel(profile.kind === 'user' ? 'private' : profile.kind);
-  byId('sheet-kind').dataset.code = profile.tele_id || state.currentTargetID;
-  byId('sheet-status').textContent = profile.kind === 'user' ? formatPresence(profile.is_online, profile.last_seen_at) : `${profile.member_count || 0} ${profile.kind === 'channel' ? 'subscribers' : 'members'}`;
-  byId('sheet-bio').textContent = profile.bio || profile.description || 'No bio yet.';
-  setAvatar(byId('sheet-avatar'), profile.username || profile.name, profile.pfp);
-  sheet.classList.remove('hidden');
-}
-function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
-function copyChatIdentity() {
-  if (!state.currentTargetID) return;
-  navigator.clipboard.writeText(`@${state.currentTargetID}`);
-  showToast('ID copied');
+async function saveProfile() {
+  const username = byId('edit-display-name').value.trim();
+  const bio = byId('edit-bio').value.trim();
+  const res = await fetch('/update_profile', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tele_id: state.myID, username, bio, theme: state.myTheme })
+  });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not update profile');
+  state.myName = data.username; state.myBio = data.bio || '';
+  localStorage.setItem('fName', state.myName); localStorage.setItem('fBio', state.myBio);
+  hydrateProfile(); closeModal('profile-modal'); await loadRecentChats(); showToast('Profile updated');
 }
 
-
-function shareCurrentChat() {
-  if (!state.currentTargetID) return;
-  const title = `${state.currentTargetName} on FelChat`;
-  const text = state.currentTargetKind === 'private'
-    ? `Chat with @${state.currentTargetID} on FelChat`
-    : `Join ${state.currentTargetKind} @${state.currentTargetID} on FelChat`;
-  if (navigator.share) {
-    navigator.share({ title, text, url: window.location.origin }).catch(() => {});
-  } else {
-    navigator.clipboard.writeText(text);
-    showToast('Invite text copied');
+function handleTypingInput() {
+  const now = Date.now();
+  if (now - state.lastTypingSent > 900) {
+    socket.emit('typing', { room: state.activeRoom, user_id: state.myID, is_typing: true });
+    state.lastTypingSent = now;
   }
+  clearTimeout(state.typingTimer);
+  state.typingTimer = setTimeout(() => socket.emit('typing', { room: state.activeRoom, user_id: state.myID, is_typing: false }), 1400);
 }
+
+function closeCurrentChat() {
+  document.body.classList.remove('chat-open');
+  setMobileTab('chats');
+}
+
+async function deleteMyMessage(id) { socket.emit('delete_message', { msg_id: id, sender_id: state.myID }); }
+
+async function editMyMessage(id) {
+  const msgEl = document.querySelector(`[data-msg-id="${id}"] .bubble:not(.deleted)`);
+  const current = msgEl?.innerText || '';
+  const next = prompt('Edit message', current);
+  if (!next || next.trim() === current.trim()) return;
+  socket.emit('edit_message', { msg_id: id, sender_id: state.myID, content: next.trim() });
+}
+
+function openReactionPicker(id, anchor) {
+  state.selectedMessageId = id;
+  const picker = byId('reaction-picker');
+  picker.classList.remove('hidden');
+  const r = anchor.getBoundingClientRect();
+  picker.style.left = `${Math.max(12, r.left)}px`;
+  picker.style.top = `${r.top - 48 + window.scrollY}px`;
+}
+function reactToCurrent(emoji) { toggleReaction(state.selectedMessageId, emoji); byId('reaction-picker').classList.add('hidden'); }
+function toggleReaction(id, emoji) { socket.emit('toggle_reaction', { msg_id: id, user_id: state.myID, emoji }); }
+function pinMessage(id) { socket.emit('pin_message', { msg_id: id, actor_id: state.myID, target_id: state.currentTargetID }); }
 
 socket.on('new_message', (data) => {
-  const activeRoom = state.currentTargetID ? buildRoom(state.currentTargetID, state.currentTargetKind) : '';
-  if (data.room === activeRoom) {
-    renderBubble(data);
-  } else if (data.sender_id !== state.myID) {
-    markUnread(data.room, true);
-    loadRecentChats();
-  }
-});
-socket.on('ping_radar', () => loadRecentChats());
-socket.on('message_deleted', (data) => {
-  const msgEl = document.querySelector(`[data-msg-id="${data.msg_id}"] .msg-stack`);
-  if (msgEl) msgEl.innerHTML = `<div class="bubble deleted">Message deleted</div><div class="bubble-time"></div>`;
-});
-socket.on('typing', (data) => {
-  const room = state.currentTargetID ? buildRoom(state.currentTargetID, state.currentTargetKind) : '';
-  if (data.room !== room || data.tele_id === state.myID) return;
-  const el = byId('typing-indicator');
-  if (!el) return;
-  el.textContent = data.is_typing ? `${data.name || 'Someone'} is typing...` : '';
-});
-socket.on('presence_update', (data) => {
-  if (state.currentTargetKind === 'private' && data.tele_id === state.currentTargetID) {
-    const statusEl = byId('chat-header-status');
-    if (statusEl) statusEl.textContent = formatPresence(data.is_online, data.last_seen_at);
-    const sheetStatus = byId('sheet-status');
-    if (sheetStatus && !byId('chat-profile-sheet').classList.contains('hidden')) sheetStatus.textContent = formatPresence(data.is_online, data.last_seen_at);
-  }
+  if (data.room === state.activeRoom) renderBubble(data);
   loadRecentChats();
 });
-socket.on('action_error', (data) => showToast(data.message || 'Action failed'));
+socket.on('ping_radar', () => loadRecentChats());
+socket.on('flash_error', (data) => showToast(data.message || 'Something went wrong'));
+socket.on('message_deleted', (data) => {
+  const wrap = document.querySelector(`[data-msg-id="${data.msg_id}"]`);
+  if (!wrap) return;
+  const bubble = wrap.querySelector('.bubble');
+  bubble.className = `bubble ${wrap.classList.contains('sent') ? 'sent' : 'received'} deleted`;
+  bubble.textContent = 'Message deleted';
+  delete state.messageCache[data.msg_id];
+});
+socket.on('message_edited', (data) => {
+  const wrap = document.querySelector(`[data-msg-id="${data.id}"]`);
+  if (!wrap) return;
+  wrap.outerHTML = messageHtml(data);
+});
+socket.on('reactions_updated', (payload) => {
+  const wrap = document.querySelector(`[data-msg-id="${payload.msg_id}"] .reaction-row`);
+  if (!wrap) return;
+  wrap.innerHTML = (payload.reactions || []).map((r) => `<button class="reaction-pill" onclick="toggleReaction(${payload.msg_id}, '${r.emoji}')">${r.emoji} <span>${r.count}</span></button>`).join('');
+});
+socket.on('presence_update', (data) => {
+  state.recentChats = state.recentChats.map((chat) => chat.id === data.tele_id ? { ...chat, online: data.online, last_seen_label: data.online ? 'online' : `last seen ${data.last_seen_at}` } : chat);
+  renderRecentChats();
+  if (!state.isCurrentChatGroup && state.currentTargetID === data.tele_id) updateChatHeaderStatus(data.online ? 'online' : formatRelativeStatus(`last seen ${data.last_seen_at}`));
+});
+socket.on('typing_update', (data) => {
+  if (data.room !== state.activeRoom || state.isCurrentChatGroup) return;
+  const otherUsers = (data.users || []).filter((u) => u !== state.myID);
+  if (otherUsers.length) updateChatHeaderStatus('typing…');
+});
+socket.on('room_meta_updated', (payload) => {
+  if (payload.target_id !== state.currentTargetID) return;
+  showPinBanner(payload.room.pin_message);
+  updateChatHeaderStatus(`${payload.room.kind} · ${payload.room.member_count} members`);
+});
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.search-wrap')) { byId('suggestions').classList.remove('show'); setSearchDropdownState(false); }
+  if (!event.target.closest('.search-wrap')) byId('suggestions').classList.remove('show');
+  if (!event.target.closest('#reaction-picker') && !event.target.closest('.message-actions button')) byId('reaction-picker').classList.add('hidden');
   if (event.target.classList.contains('modal')) event.target.classList.add('hidden');
 });
-window.addEventListener('beforeunload', () => { if (state.myID) socket.emit('presence_offline', { my_id: state.myID }); });
-window.addEventListener('resize', () => setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : (isMobileLayout() ? state.mobileTab : 'chats')));
 
-
-window.addEventListener('beforeinstallprompt', (event) => {
-  event.preventDefault();
-  state.deferredInstallPrompt = event;
-  updateInstallBanner();
-});
-window.addEventListener('appinstalled', () => {
-  state.deferredInstallPrompt = null;
-  updateInstallBanner();
-  showToast('FelChat installed');
-});
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.myID) socket.emit('presence_online', { my_id: state.myID });
-});
-applyTheme(state.theme);
-
+applyTheme(state.myTheme, false);
+renderThemeCards();
 if (state.myID) startSession();
+maybeShowMobileTabs();
