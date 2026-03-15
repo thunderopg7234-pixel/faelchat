@@ -62,6 +62,8 @@ class User(db.Model):
     pfp = db.Column(db.String(255), default='')
     bio = db.Column(db.String(280), default='')
     theme = db.Column(db.String(32), default='midnight-cyan')
+    privacy_last_seen = db.Column(db.String(20), default='everyone')
+    blocked_users = db.Column(db.Text, default='')
     last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
@@ -92,6 +94,8 @@ class Group(db.Model):
     pfp = db.Column(db.String(255), default='')
     description = db.Column(db.String(280), default='')
     kind = db.Column(db.String(20), default='group')  # group or channel
+    visibility = db.Column(db.String(20), default='public')
+    invite_token = db.Column(db.String(64), default='')
     owner_id = db.Column(db.String(50), default='')
     pin_message_id = db.Column(db.Integer, nullable=True)
 
@@ -119,6 +123,8 @@ def ensure_schema():
 
     add_column_if_missing('user', 'bio', "VARCHAR(280) DEFAULT ''")
     add_column_if_missing('user', 'theme', "VARCHAR(32) DEFAULT 'midnight-cyan'")
+    add_column_if_missing('user', 'privacy_last_seen', "VARCHAR(20) DEFAULT 'everyone'")
+    add_column_if_missing('user', 'blocked_users', "TEXT DEFAULT ''")
     add_column_if_missing('user', 'last_seen_at', "TIMESTAMP")
     add_column_if_missing('message', 'edited_at', 'TIMESTAMP')
     add_column_if_missing('message', 'reply_to_id', 'INTEGER')
@@ -128,6 +134,8 @@ def ensure_schema():
     add_column_if_missing('message', 'forwarded_from', "VARCHAR(120) DEFAULT ''")
     add_column_if_missing('group', 'description', "VARCHAR(280) DEFAULT ''")
     add_column_if_missing('group', 'kind', "VARCHAR(20) DEFAULT 'group'")
+    add_column_if_missing('group', 'visibility', "VARCHAR(20) DEFAULT 'public'")
+    add_column_if_missing('group', 'invite_token', "VARCHAR(64) DEFAULT ''")
     add_column_if_missing('group', 'owner_id', "VARCHAR(50) DEFAULT ''")
     add_column_if_missing('group', 'pin_message_id', 'INTEGER')
     add_column_if_missing('group_member', 'role', "VARCHAR(20) DEFAULT 'member'")
@@ -135,6 +143,10 @@ def ensure_schema():
     with engine.begin() as conn:
         conn.execute(text('UPDATE "user" SET last_seen_at = CURRENT_TIMESTAMP WHERE last_seen_at IS NULL'))
         conn.execute(text("UPDATE \"group\" SET kind = 'group' WHERE kind IS NULL OR kind = ''"))
+        conn.execute(text("UPDATE \"group\" SET visibility = 'public' WHERE visibility IS NULL OR visibility = ''"))
+        conn.execute(text("UPDATE \"group\" SET invite_token = '' WHERE invite_token IS NULL"))
+        conn.execute(text("UPDATE \"user\" SET privacy_last_seen = 'everyone' WHERE privacy_last_seen IS NULL OR privacy_last_seen = ''"))
+        conn.execute(text("UPDATE \"user\" SET blocked_users = '' WHERE blocked_users IS NULL"))
         conn.execute(text("UPDATE \"group_member\" SET role = 'member' WHERE role IS NULL OR role = ''"))
         conn.execute(text("UPDATE \"message\" SET reactions = '' WHERE reactions IS NULL"))
         conn.execute(text("UPDATE \"message\" SET delivered_to = '' WHERE delivered_to IS NULL"))
@@ -195,11 +207,13 @@ def is_online(tele_id: str) -> bool:
     return tele_id in ONLINE_USERS
 
 
-def format_user_status(user: User | None):
+def format_user_status(user: User | None, viewer_id: str = ''):
     if not user:
         return {'online': False, 'last_seen_label': 'Unavailable', 'last_seen_at': None}
     if is_online(user.tele_id):
         return {'online': True, 'last_seen_label': 'online', 'last_seen_at': user.last_seen_at.isoformat() if user.last_seen_at else None}
+    if not can_view_last_seen(viewer_id, user):
+        return {'online': False, 'last_seen_label': 'last seen hidden', 'last_seen_at': None}
     if not user.last_seen_at:
         return {'online': False, 'last_seen_label': 'last seen recently', 'last_seen_at': None}
     return {
@@ -250,6 +264,26 @@ def append_simple_list(raw: str, value: str) -> str:
     return ','.join(sorted(items))
 
 
+
+
+def parse_blocked(raw: str) -> set[str]:
+    return {u for u in parse_simple_list(raw) if u}
+
+
+def can_view_last_seen(viewer_id: str, user: User | None) -> bool:
+    if not user:
+        return False
+    if normalize_handle(viewer_id) == user.tele_id:
+        return True
+    return (user.privacy_last_seen or 'everyone') != 'nobody'
+
+
+def is_blocked(sender_id: str, receiver_id: str) -> bool:
+    receiver = User.query.filter_by(tele_id=normalize_handle(receiver_id)).first()
+    if not receiver:
+        return False
+    return normalize_handle(sender_id) in parse_blocked(receiver.blocked_users)
+
 def can_post(actor_id: str, target_code: str, is_group: bool) -> bool:
     if not is_group:
         return True
@@ -293,6 +327,7 @@ def message_payload(msg: Message) -> dict:
 
 
 def room_meta_for_code(code: str):
+    token = (data.get('invite_token') or '').strip()
     room = Group.query.filter_by(code=code).first()
     if not room:
         return None
@@ -304,6 +339,8 @@ def room_meta_for_code(code: str):
         'pfp': room.pfp or '',
         'description': room.description or '',
         'kind': room.kind,
+        'visibility': room.visibility or 'public',
+        'invite_token': room.invite_token or '',
         'owner_id': room.owner_id or '',
         'member_count': member_count,
         'pin_message': message_payload(pin) if pin else None,
@@ -329,7 +366,7 @@ def signup():
     user = User(username=username, tele_id=tele_id, password=password, last_seen_at=datetime.utcnow())
     db.session.add(user)
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan'})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone'})
 
 
 @app.route('/login', methods=['POST'])
@@ -369,11 +406,14 @@ def search_suggestions():
             continue
         results.append({
             'type': 'user', 'name': user.username, 'id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '',
-            **format_user_status(user)
+            **format_user_status(user, my_id)
         })
+    joined_codes = {m.group_code for m in GroupMember.query.filter_by(tele_id=my_id).all()} if my_id else set()
     for group in groups:
+        if (group.visibility or 'public') == 'private' and group.code not in joined_codes:
+            continue
         results.append({
-            'type': group.kind, 'name': group.name, 'id': group.code, 'pfp': group.pfp or '', 'description': group.description or ''
+            'type': group.kind, 'name': group.name, 'id': group.code, 'pfp': group.pfp or '', 'description': group.description or '', 'visibility': group.visibility or 'public'
         })
     return jsonify(results[:12])
 
@@ -386,13 +426,17 @@ def create_room():
     creator_id = normalize_handle(data.get('creator_id') or '')
     kind = (data.get('kind') or 'group').strip().lower()
     description = (data.get('description') or '').strip()[:280]
+    visibility = (data.get('visibility') or 'public').strip().lower()
     if kind not in {'group', 'channel'}:
         kind = 'group'
     if not name or not code or not creator_id:
         return json_error('Fill all fields')
     if Group.query.filter_by(code=code).first():
         return json_error(f'{kind.title()} code already exists!')
-    room = Group(name=name, code=code, kind=kind, description=description, owner_id=creator_id)
+    if visibility not in {'public','private'}:
+        visibility = 'public'
+    invite_token = uuid.uuid4().hex[:10] if visibility == 'private' else ''
+    room = Group(name=name, code=code, kind=kind, description=description, visibility=visibility, invite_token=invite_token, owner_id=creator_id)
     db.session.add(room)
     db.session.add(GroupMember(group_code=code, tele_id=creator_id, role='owner'))
     db.session.commit()
@@ -404,9 +448,14 @@ def join_room_route():
     data = request.json or {}
     code = normalize_handle(data.get('code') or '')
     tele_id = normalize_handle(data.get('tele_id') or '')
+    token = (data.get('invite_token') or '').strip()
     room = Group.query.filter_by(code=code).first()
     if not room:
         return json_error('Room not found')
+    if (room.visibility or 'public') == 'private' and token != (room.invite_token or ''):
+        member = GroupMember.query.filter_by(group_code=code, tele_id=tele_id).first()
+        if not member:
+            return json_error('Invite token required')
     member = GroupMember.query.filter_by(group_code=code, tele_id=tele_id).first()
     if not member:
         db.session.add(GroupMember(group_code=code, tele_id=tele_id, role='member'))
@@ -443,7 +492,7 @@ def recent_chats(my_id):
             'last_msg': last_msg,
             'time': msg.timestamp.isoformat(),
             'ts': msg.timestamp.timestamp(),
-            **format_user_status(other_user),
+            **format_user_status(other_user, my_id),
         }
     memberships = GroupMember.query.filter_by(tele_id=my_id).all()
     for membership in memberships:
@@ -466,6 +515,8 @@ def recent_chats(my_id):
             'pfp': room.pfp or '',
             'description': room.description or '',
             'kind': room.kind,
+        'visibility': room.visibility or 'public',
+        'invite_token': room.invite_token or '',
             'role': membership.role,
             'last_msg': last_text,
             'time': time_str,
@@ -486,10 +537,11 @@ def get_history(room):
 
 @app.route('/profile/<tele_id>')
 def profile(tele_id):
+    viewer_id = normalize_handle(request.args.get('viewer_id') or '')
     user = User.query.filter_by(tele_id=normalize_handle(tele_id)).first()
     if not user:
         return json_error('User not found', 404)
-    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', **format_user_status(user)}
+    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'privacy_last_seen': user.privacy_last_seen or 'everyone', **format_user_status(user, viewer_id)}
     return jsonify(payload)
 
 
@@ -508,6 +560,7 @@ def update_profile():
     username = (data.get('username') or '').strip()
     bio = (data.get('bio') or '').strip()[:280]
     theme = (data.get('theme') or '').strip()
+    privacy_last_seen = (data.get('privacy_last_seen') or '').strip()
     if not tele_id or not username:
         return json_error('Fill all fields')
     user = User.query.filter_by(tele_id=tele_id).first()
@@ -517,8 +570,10 @@ def update_profile():
     user.bio = bio
     if theme:
         user.theme = theme
+    if privacy_last_seen in {'everyone','nobody'}:
+        user.privacy_last_seen = privacy_last_seen
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan'})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone'})
 
 
 @app.route('/upload', methods=['POST'])
@@ -552,6 +607,84 @@ def upload():
         return jsonify({'status': 'success', 'url': file_url, 'type': 'room_pfp'})
 
     return jsonify({'status': 'success', 'url': file_url, 'type': detected_type})
+
+
+
+
+@app.route('/media_gallery/<path:room>')
+def media_gallery(room):
+    messages = Message.query.filter_by(room=room).filter(Message.msg_type.in_(['image','video','audio','file'])).order_by(Message.timestamp.desc()).all()
+    return jsonify([message_payload(msg) for msg in messages if not msg.is_deleted])
+
+
+@app.route('/room_members/<code>')
+def room_members(code):
+    code = normalize_handle(code)
+    members = GroupMember.query.filter_by(group_code=code).all()
+    room = Group.query.filter_by(code=code).first()
+    if not room:
+        return json_error('Room not found', 404)
+    results = []
+    for member in members:
+        user = User.query.filter_by(tele_id=member.tele_id).first()
+        if not user:
+            continue
+        results.append({
+            'tele_id': user.tele_id,
+            'username': user.username,
+            'pfp': user.pfp or '',
+            'role': member.role or 'member',
+            'online': is_online(user.tele_id),
+        })
+    return jsonify({'status':'success','room': room_meta_for_code(code), 'members': results})
+
+
+@app.route('/room_member_role', methods=['POST'])
+def room_member_role():
+    data = request.json or {}
+    code = normalize_handle(data.get('code') or '')
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    target_id = normalize_handle(data.get('target_id') or '')
+    role = (data.get('role') or 'member').strip().lower()
+    if role not in {'member','admin'}:
+        role = 'member'
+    actor = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    target = GroupMember.query.filter_by(group_code=code, tele_id=target_id).first()
+    room = Group.query.filter_by(code=code).first()
+    if not room or not actor or actor.role != 'owner' or not target or target.tele_id == room.owner_id:
+        return json_error('Not allowed', 403)
+    target.role = role
+    db.session.commit()
+    return jsonify({'status':'success'})
+
+
+@app.route('/block_user', methods=['POST'])
+def block_user():
+    data = request.json or {}
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    target_id = normalize_handle(data.get('target_id') or '')
+    mode = (data.get('mode') or 'toggle').strip()
+    actor = User.query.filter_by(tele_id=actor_id).first()
+    if not actor or not target_id:
+        return json_error('User not found', 404)
+    blocked = parse_blocked(actor.blocked_users)
+    if mode == 'block':
+        blocked.add(target_id)
+    elif mode == 'unblock':
+        blocked.discard(target_id)
+    else:
+        blocked.remove(target_id) if target_id in blocked else blocked.add(target_id)
+    actor.blocked_users = ','.join(sorted(blocked))
+    db.session.commit()
+    return jsonify({'status':'success','blocked_users':sorted(blocked)})
+
+
+@app.route('/privacy/<tele_id>')
+def privacy(tele_id):
+    user = User.query.filter_by(tele_id=normalize_handle(tele_id)).first()
+    if not user:
+        return json_error('User not found', 404)
+    return jsonify({'status':'success','privacy_last_seen': user.privacy_last_seen or 'everyone', 'blocked_users': sorted(parse_blocked(user.blocked_users))})
 
 
 # ---------- socket events ----------
@@ -649,6 +782,9 @@ def handle_private_message(data):
         return
     if not content and not file_url:
         return
+    if not is_group and is_blocked(sender_id, target_id):
+        emit('flash_error', {'message': 'This user has blocked you.'}, room=request.sid)
+        return
     if not can_post(sender_id, target_id, is_group):
         emit('flash_error', {'message': 'Only channel admins can post there.'}, room=request.sid)
         return
@@ -734,6 +870,7 @@ def pin_message(data):
     code = normalize_handle((data or {}).get('target_id') or '')
     actor_id = normalize_handle((data or {}).get('actor_id') or '')
     msg_id = (data or {}).get('msg_id')
+    token = (data.get('invite_token') or '').strip()
     room = Group.query.filter_by(code=code).first()
     member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
     if not room or not member or member.role not in {'owner', 'admin'}:

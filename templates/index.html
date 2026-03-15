@@ -109,6 +109,7 @@
 
                 <div class="telegram-card">
                     <button class="telegram-row" onclick="openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Theme Studio</span></button>
+                    <button class="telegram-row" onclick="openModal('privacy-modal')"><span class="row-icon pink">🔒</span><span>Privacy & Lock</span></button>
                     <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
                     <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
                     <button class="telegram-row" onclick="setListFilter('archived', document.querySelector('.chip[data-filter=\'archived\']'))"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
@@ -148,6 +149,7 @@
             <input id="room-name" class="base-input" placeholder="Name">
             <input id="room-code" class="base-input" placeholder="Unique code">
             <textarea id="room-description" class="base-input textarea" placeholder="Description"></textarea>
+            <select id="room-visibility" class="base-input"><option value="public">Public</option><option value="private">Private</option></select>
             <div class="modal-actions two">
                 <button class="base-btn secondary" onclick="joinRoom()">Join</button>
                 <button class="base-btn" onclick="createRoom()">Create</button>
@@ -186,10 +188,13 @@
             </div>
             <div class="telegram-card profile-sheet-actions">
                 <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()"><span class="row-icon pink">📎</span><span>Send media</span></button>
+                <button class="telegram-row" onclick="openMediaGallery()"><span class="row-icon pink">🖼️</span><span>Media gallery</span></button>
+                <button class="telegram-row" onclick="openMembersModal()"><span class="row-icon pink">👥</span><span>Members & Roles</span></button>
                 <button class="telegram-row" onclick="copyChatIdentity()"><span class="row-icon pink">⎘</span><span>Copy ID</span></button>
                 <button class="telegram-row" onclick="toggleArchiveCurrentChat()"><span class="row-icon pink">🗃️</span><span>Archive / Unarchive</span></button>
                 <button class="telegram-row" onclick="toggleMuteCurrentChat()"><span class="row-icon pink">🔕</span><span>Mute / Unmute</span></button>
                 <button class="telegram-row" onclick="copyInviteLink()"><span class="row-icon pink">🔗</span><span>Copy invite / room code</span></button>
+                <button class="telegram-row" onclick="toggleBlockCurrentUser()"><span class="row-icon pink">⛔</span><span>Block / Unblock user</span></button>
                 <button class="telegram-row" onclick="closeProfileSheet(); openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Choose theme</span></button>
             </div>
         </div>
@@ -206,6 +211,46 @@
         <div class="modal-card glass-card">
             <div class="modal-top"><h3>Forward message</h3><button class="icon-btn" onclick="closeModal('forward-modal')">✕</button></div>
             <div id="forward-list" class="forward-list"></div>
+        </div>
+    </div>
+
+
+    <div id="privacy-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top"><h3>Privacy & Lock</h3><button class="icon-btn" onclick="closeModal('privacy-modal')">✕</button></div>
+            <label class="modal-label">Last seen visibility</label>
+            <select id="privacy-last-seen" class="base-input">
+                <option value="everyone">Everyone</option>
+                <option value="nobody">Nobody</option>
+            </select>
+            <label class="modal-label">App lock passcode</label>
+            <input id="app-passcode" class="base-input" inputmode="numeric" placeholder="Set 4-digit passcode">
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="clearPasscode()">Clear lock</button>
+                <button class="base-btn" onclick="savePrivacySettings()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="media-gallery-modal" class="modal hidden">
+        <div class="modal-card glass-card wide">
+            <div class="modal-top"><h3>Media gallery</h3><button class="icon-btn" onclick="closeModal('media-gallery-modal')">✕</button></div>
+            <div id="media-gallery-grid" class="media-gallery-grid"></div>
+        </div>
+    </div>
+
+    <div id="members-modal" class="modal hidden">
+        <div class="modal-card glass-card wide">
+            <div class="modal-top"><h3>Members</h3><button class="icon-btn" onclick="closeModal('members-modal')">✕</button></div>
+            <div id="members-list" class="forward-list"></div>
+        </div>
+    </div>
+
+    <div id="passcode-lock" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top"><h3>Unlock FelChat</h3></div>
+            <input id="unlock-passcode" class="base-input" inputmode="numeric" placeholder="Enter passcode">
+            <button class="base-btn" onclick="unlockApp()">Unlock</button>
         </div>
     </div>
 

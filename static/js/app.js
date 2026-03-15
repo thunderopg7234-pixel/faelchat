@@ -37,6 +37,13 @@ const state = {
   drafts: JSON.parse(localStorage.getItem('fDrafts') || '{}'),
   chatSearch: '',
   forwardSourceId: null,
+  privacyLastSeen: localStorage.getItem('fPrivacyLastSeen') || 'everyone',
+  blockedUsers: new Set(JSON.parse(localStorage.getItem('fBlockedUsers') || '[]')),
+  passcode: localStorage.getItem('fPasscode') || '',
+  mediaRecorder: null,
+  recordedChunks: [],
+  roomVisibility: 'public',
+  roomInviteToken: '',
 };
 
 const byId = (id) => document.getElementById(id);
@@ -223,7 +230,9 @@ async function startSession() {
   renderThemeCards();
   applyTheme(state.myTheme, false);
   socket.emit('connect_radar', { my_id: state.myID });
+  await loadPrivacySettings();
   await loadRecentChats();
+  maybeLockApp();
 }
 
 function logout() {
@@ -324,6 +333,7 @@ async function createRoom() {
     name: byId('room-name').value.trim(),
     code: byId('room-code').value.trim(),
     description: byId('room-description').value.trim(),
+    visibility: byId('room-visibility').value,
     creator_id: state.myID,
     kind: state.roomKindChoice,
   };
@@ -331,7 +341,7 @@ async function createRoom() {
   const data = await res.json();
   if (data.status !== 'success') return showToast(data.message || 'Could not create room');
   closeModal('room-modal');
-  ['room-name','room-code','room-description'].forEach((id) => byId(id).value = '');
+  ['room-name','room-code','room-description'].forEach((id) => byId(id).value = ''); byId('room-visibility').value='public';
   await loadRecentChats();
   openChat(data.room.name, data.room.code, data.room.pfp || '', true, { ...data.room, role: 'owner' });
   showToast(`${data.room.kind} created`);
@@ -365,6 +375,7 @@ function renderChatPanel(name, pfp, isGroup) {
           </div>
         </div>
         <div class="header-actions">
+          <button class="icon-btn" onclick="openMediaGallery()">🖼️</button>
           <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
           <button class="icon-btn" onclick="openModal('theme-modal')">🎨</button>
         </div>
@@ -379,7 +390,8 @@ function renderChatPanel(name, pfp, isGroup) {
       <div id="messages-view" class="messages-view"></div>
       <div class="chat-input-area">
         <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
-        <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
+        <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
+        <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
         <input type="text" id="msg-input" placeholder="Type a message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
         <button class="send-btn" onclick="sendMsg()">➤</button>
       </div>
@@ -445,11 +457,13 @@ async function openChat(name, id, pfp, isGroup, meta = {}) {
     if (metaData.status === 'success') {
       state.currentTargetBio = metaData.room.description || '';
       state.currentTargetKind = metaData.room.kind;
+      state.roomVisibility = metaData.room.visibility || 'public';
+      state.roomInviteToken = metaData.room.invite_token || '';
       showPinBanner(metaData.room.pin_message);
-      updateChatHeaderStatus(`${metaData.room.kind} · ${metaData.room.member_count} members`);
+      updateChatHeaderStatus(`${metaData.room.kind} · ${metaData.room.member_count} members · ${state.roomVisibility}`);
     }
   } else {
-    const pRes = await fetch(`/profile/${encodeURIComponent(id)}`);
+    const pRes = await fetch(`/profile/${encodeURIComponent(id)}?viewer_id=${encodeURIComponent(state.myID)}`);
     const pdata = await pRes.json();
     if (pdata.status === 'success') {
       state.currentTargetBio = pdata.bio || '';
@@ -549,25 +563,27 @@ async function sendMsg() {
 }
 
 async function uploadMedia(event) {
-  const file = event.target.files?.[0];
-  if (!file || !state.currentTargetID) return;
-  const fd = new FormData();
-  fd.append('file', file);
-  const res = await fetch('/upload', { method: 'POST', body: fd });
-  const data = await res.json();
+  const files = [...(event.target.files || [])];
+  if (!files.length || !state.currentTargetID) return;
   event.target.value = '';
-  if (data.status !== 'success') return showToast(data.message || 'Upload failed');
-  socket.emit('private_message', {
-    room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
-    sender_id: state.myID,
-    sender_name: state.myName,
-    target_id: state.currentTargetID,
-    is_group: state.isCurrentChatGroup,
-    msg_type: data.type,
-    content: file.name,
-    file_url: data.url,
-    reply_to_id: state.replyTo?.id || null,
-  });
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.status !== 'success') { showToast(data.message || 'Upload failed'); continue; }
+    socket.emit('private_message', {
+      room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
+      sender_id: state.myID,
+      sender_name: state.myName,
+      target_id: state.currentTargetID,
+      is_group: state.isCurrentChatGroup,
+      msg_type: data.type,
+      content: file.name,
+      file_url: data.url,
+      reply_to_id: state.replyTo?.id || null,
+    });
+  }
   clearReply();
 }
 
@@ -779,3 +795,148 @@ applyTheme(state.myTheme, false);
 renderThemeCards();
 if (state.myID) startSession();
 maybeShowMobileTabs();
+
+
+async function loadPrivacySettings() {
+  if (!state.myID) return;
+  const res = await fetch(`/privacy/${encodeURIComponent(state.myID)}`);
+  const data = await res.json();
+  if (data.status === 'success') {
+    state.privacyLastSeen = data.privacy_last_seen || 'everyone';
+    state.blockedUsers = new Set(data.blocked_users || []);
+    localStorage.setItem('fPrivacyLastSeen', state.privacyLastSeen);
+    localStorage.setItem('fBlockedUsers', JSON.stringify([...state.blockedUsers]));
+    const sel = byId('privacy-last-seen');
+    if (sel) sel.value = state.privacyLastSeen;
+  }
+}
+
+async function savePrivacySettings() {
+  state.privacyLastSeen = byId('privacy-last-seen').value;
+  const pass = byId('app-passcode').value.trim();
+  if (pass) {
+    state.passcode = pass;
+    localStorage.setItem('fPasscode', pass);
+  }
+  const res = await fetch('/update_profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tele_id: state.myID, username: state.myName, bio: state.myBio, theme: state.myTheme, privacy_last_seen: state.privacyLastSeen })
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    localStorage.setItem('fPrivacyLastSeen', state.privacyLastSeen);
+    closeModal('privacy-modal');
+    showToast('Privacy saved');
+  }
+}
+
+function clearPasscode() {
+  state.passcode = '';
+  localStorage.removeItem('fPasscode');
+  byId('app-passcode').value = '';
+  showToast('App lock removed');
+}
+
+function maybeLockApp() {
+  if (!state.passcode) return;
+  byId('passcode-lock').classList.remove('hidden');
+}
+
+function unlockApp() {
+  const val = byId('unlock-passcode').value.trim();
+  if (val !== state.passcode) return showToast('Wrong passcode');
+  byId('passcode-lock').classList.add('hidden');
+  byId('unlock-passcode').value = '';
+}
+
+async function openMediaGallery() {
+  if (!state.currentTargetID) return;
+  const res = await fetch(`/media_gallery/${encodeURIComponent(buildRoom(state.currentTargetID, state.isCurrentChatGroup))}`);
+  const items = await res.json();
+  const grid = byId('media-gallery-grid');
+  grid.innerHTML = items.length ? items.map((item) => {
+    if (item.msg_type === 'image') return `<a class="gallery-card" href="${item.file_url}" target="_blank"><img src="${item.file_url}" alt="image"><span>${escapeHtml(item.content || 'Image')}</span></a>`;
+    if (item.msg_type === 'video') return `<a class="gallery-card" href="${item.file_url}" target="_blank"><video src="${item.file_url}" muted playsinline></video><span>${escapeHtml(item.content || 'Video')}</span></a>`;
+    if (item.msg_type === 'audio') return `<div class="gallery-card"><div class="gallery-file">🎵</div><audio controls src="${item.file_url}"></audio><span>${escapeHtml(item.content || 'Audio')}</span></div>`;
+    return `<a class="gallery-card" href="${item.file_url}" target="_blank"><div class="gallery-file">📁</div><span>${escapeHtml(item.content || 'File')}</span></a>`;
+  }).join('') : '<div class="empty-mini">No media yet</div>';
+  openModal('media-gallery-modal');
+}
+
+async function openMembersModal() {
+  if (!state.isCurrentChatGroup) return showToast('Only for groups and channels');
+  const res = await fetch(`/room_members/${encodeURIComponent(state.currentTargetID)}`);
+  const data = await res.json();
+  if (data.status !== 'success') return showToast('Could not load members');
+  const list = byId('members-list');
+  list.innerHTML = data.members.map((m) => `
+    <div class="forward-row">
+      <div class="avatar" style="background-image:${m.pfp ? `url(${m.pfp})` : 'none'}">${m.pfp ? '' : escapeHtml(getInitial(m.username))}</div>
+      <div class="chat-meta">
+        <strong>${escapeHtml(m.username)}</strong>
+        <p>@${escapeHtml(m.tele_id)}</p>
+        <small class="muted">${m.role}${m.online ? ' · online' : ''}</small>
+      </div>
+      ${state.currentRole === 'owner' && m.tele_id !== state.myID ? `<button class="base-btn secondary mini-btn" onclick="toggleAdminRole('${m.tele_id}','${m.role === 'admin' ? 'member' : 'admin'}')">${m.role === 'admin' ? 'Remove admin' : 'Make admin'}</button>` : ''}
+    </div>`).join('');
+  openModal('members-modal');
+}
+
+async function toggleAdminRole(targetId, role) {
+  const res = await fetch('/room_member_role', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code: state.currentTargetID, actor_id: state.myID, target_id: targetId, role })});
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Not allowed');
+  showToast('Role updated');
+  openMembersModal();
+}
+
+async function toggleBlockCurrentUser() {
+  if (state.isCurrentChatGroup) return showToast('Blocking is for private chats');
+  const res = await fetch('/block_user', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ actor_id: state.myID, target_id: state.currentTargetID, mode: state.blockedUsers.has(state.currentTargetID) ? 'unblock' : 'block' })});
+  const data = await res.json();
+  if (data.status !== 'success') return showToast('Could not update block list');
+  state.blockedUsers = new Set(data.blocked_users || []);
+  localStorage.setItem('fBlockedUsers', JSON.stringify([...state.blockedUsers]));
+  showToast(state.blockedUsers.has(state.currentTargetID) ? 'User blocked' : 'User unblocked');
+}
+
+function copyInviteLink() {
+  if (!state.currentTargetID) return;
+  const base = location.origin;
+  const value = state.isCurrentChatGroup ? `${base}/?room=${encodeURIComponent(state.currentTargetID)}${state.roomInviteToken ? `&invite=${encodeURIComponent(state.roomInviteToken)}` : ''}` : `@${state.currentTargetID}`;
+  navigator.clipboard?.writeText(value);
+  showToast('Invite copied');
+}
+
+async function startVoiceRecord() {
+  if (!navigator.mediaDevices?.getUserMedia || state.mediaRecorder?.state === 'recording') return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.recordedChunks = [];
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.mediaRecorder.ondataavailable = (e) => { if (e.data.size) state.recordedChunks.push(e.data); };
+    state.mediaRecorder.onstop = async () => {
+      const blob = new Blob(state.recordedChunks, { type: 'audio/webm' });
+      if (!blob.size || !state.currentTargetID) return;
+      const fd = new FormData();
+      fd.append('file', new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' }));
+      const res = await fetch('/upload', { method:'POST', body: fd });
+      const data = await res.json();
+      if (data.status !== 'success') return showToast('Voice upload failed');
+      socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: data.type, content: 'Voice note', file_url: data.url, reply_to_id: state.replyTo?.id || null });
+      showToast('Voice note sent');
+      clearReply();
+      stream.getTracks().forEach((t) => t.stop());
+    };
+    state.mediaRecorder.start();
+    showToast('Recording… hold and release to send');
+  } catch (e) {
+    showToast('Microphone permission needed');
+  }
+}
+
+function stopVoiceRecord() {
+  if (state.mediaRecorder?.state === 'recording') state.mediaRecorder.stop();
+}
+
