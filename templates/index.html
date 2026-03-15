@@ -133,20 +133,20 @@
             </aside>
         </main>
 
-            <nav class="mobile-tabbar glass-card" id="mobile-tabbar">
-                <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')">
-                    <span class="mobile-tab-ico">💬</span>
-                    <span>Chats</span>
-                </button>
-                <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')">
-                    <span class="mobile-tab-ico">🗨️</span>
-                    <span>Open Chat</span>
-                </button>
-                <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')">
-                    <span class="mobile-tab-ico">⚙️</span>
-                    <span>Settings</span>
-                </button>
-            </nav>
+        <nav class="mobile-tabbar glass-card hidden" id="mobile-tabbar">
+            <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')">
+                <span class="mobile-tab-ico">💬</span>
+                <span>Chats</span>
+            </button>
+            <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')">
+                <span class="mobile-tab-ico">🗨️</span>
+                <span>Open Chat</span>
+            </button>
+            <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')">
+                <span class="mobile-tab-ico">⚙️</span>
+                <span>Settings</span>
+            </button>
+        </nav>
     </div>
 
     <div id="group-modal" class="modal hidden">
@@ -172,6 +172,32 @@
             </div>
             <input id="edit-display-name" class="base-input" placeholder="Display name">
             <button class="base-btn" onclick="saveProfile()">Save Changes</button>
+        </div>
+    </div>
+
+    <div id="chat-profile-sheet" class="profile-sheet hidden">
+        <div class="profile-sheet-backdrop" onclick="closeProfileSheet()"></div>
+        <div class="profile-sheet-card glass-card">
+            <button class="profile-sheet-close" onclick="closeProfileSheet()">✕</button>
+            <div class="profile-sheet-hero">
+                <div id="sheet-avatar" class="avatar large"></div>
+                <div class="profile-sheet-meta">
+                    <h3 id="sheet-name">User</h3>
+                    <p id="sheet-handle">@username</p>
+                    <span id="sheet-kind" class="badge-pill">Private chat</span>
+                </div>
+            </div>
+            <div class="telegram-card profile-sheet-actions">
+                <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()">
+                    <span class="row-icon pink">📎</span><span>Send media</span>
+                </button>
+                <button class="telegram-row" onclick="copyChatIdentity()">
+                    <span class="row-icon pink">⎘</span><span>Copy ID</span>
+                </button>
+                <button class="telegram-row" onclick="closeProfileSheet(); setMobileTab('settings')">
+                    <span class="row-icon pink">⚙️</span><span>Open settings</span>
+                </button>
+            </div>
         </div>
     </div>
 

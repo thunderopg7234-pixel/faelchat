@@ -9,6 +9,8 @@ const state = {
     currentTargetPFP: '',
     isCurrentChatGroup: false,
     isSignUp: false,
+    mobileTab: 'chats',
+    profileCache: {},
 };
 
 const byId = (id) => document.getElementById(id);
@@ -51,6 +53,82 @@ function toggleAuth(forceSignUp = null) {
         : 'Log in with your @username and password.';
     byId('auth-switch-text').textContent = state.isSignUp ? 'Already have an account?' : 'Don’t have an account?';
     byId('auth-switch-link').textContent = state.isSignUp ? 'Log in' : 'Sign up';
+}
+
+
+function isMobileLayout() {
+    return window.matchMedia('(max-width: 980px)').matches;
+}
+
+function setMobileTab(tab) {
+    state.mobileTab = tab;
+    const app = byId('main-app');
+    if (!app) return;
+    app.dataset.mobileTab = tab;
+    document.body.classList.toggle('chat-open', tab === 'chat' && Boolean(state.currentTargetID));
+    ['chats', 'chat', 'settings'].forEach((name) => {
+        byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab);
+    });
+}
+
+function maybeShowMobileTabs() {
+    byId('mobile-tabbar')?.classList.toggle('hidden', !state.myID);
+    if (!isMobileLayout()) {
+        document.body.classList.remove('chat-open');
+        return;
+    }
+    if (!state.currentTargetID && state.mobileTab === 'chat') {
+        setMobileTab('chats');
+        return;
+    }
+    setMobileTab(state.mobileTab || 'chats');
+}
+
+function closeCurrentChat() {
+    state.currentTargetID = '';
+    state.currentTargetName = '';
+    state.currentTargetPFP = '';
+    state.isCurrentChatGroup = false;
+    byId('chat-panel').className = 'chat-panel glass-card empty-state';
+    byId('chat-panel').innerHTML = `<div class="empty-center"><div class="empty-icon">💬</div><h3>Select a chat</h3><p>Search a user ID, open a recent chat, or create a group.</p></div>`;
+    document.querySelectorAll('.chat-row').forEach((el) => el.classList.remove('active'));
+    setMobileTab('chats');
+}
+
+async function openProfileSheet() {
+    if (!state.currentTargetID) return;
+    let data = state.profileCache[state.currentTargetID];
+    if (!state.isCurrentChatGroup) {
+        try {
+            const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}`);
+            const json = await res.json();
+            if (json.status === 'success') {
+                data = json;
+                state.profileCache[state.currentTargetID] = json;
+            }
+        } catch {}
+    }
+    const name = data?.username || state.currentTargetName;
+    const handle = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
+    byId('sheet-name').textContent = name || 'Chat';
+    byId('sheet-handle').textContent = handle;
+    byId('sheet-kind').textContent = state.isCurrentChatGroup ? 'Group chat' : 'Private chat';
+    setAvatar(byId('sheet-avatar'), name, data?.pfp || state.currentTargetPFP);
+    byId('chat-profile-sheet').classList.remove('hidden');
+}
+
+function closeProfileSheet() {
+    byId('chat-profile-sheet').classList.add('hidden');
+}
+
+async function copyChatIdentity() {
+    const value = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
+    try {
+        await navigator.clipboard.writeText(value);
+        showToast('Copied');
+    } catch {
+        showToast(value);
+    }
 }
 
 function switchToSignUp() {
@@ -99,6 +177,7 @@ function logout(reload = true) {
     localStorage.removeItem('fID');
     localStorage.removeItem('fName');
     localStorage.removeItem('fPFP');
+    byId('mobile-tabbar')?.classList.add('hidden');
     if (reload) location.reload();
 }
 
@@ -121,7 +200,7 @@ function startSession() {
     hydrateProfile();
     socket.emit('connect_radar', { my_id: state.myID });
     loadRecentChats();
-    syncResponsiveLayout();
+    maybeShowMobileTabs();
 }
 
 async function saveProfile() {
@@ -249,26 +328,29 @@ function buildRoom(id, isGroup) {
 
 function renderChatPanel(name, pfp, isGroup) {
     const panel = byId('chat-panel');
-    panel.classList.remove('empty-state');
+    panel.className = 'chat-panel glass-card';
     panel.innerHTML = `
-        <div class="chat-header">
-            <div class="chat-header-left">
-                <div id="chat-header-avatar" class="avatar"></div>
-                <div class="chat-header-meta">
-                    <strong id="chat-header-name"></strong>
-                    <p>${isGroup ? 'Group chat' : 'Private chat'}</p>
+        <div class="chat-shell">
+            <div class="chat-header">
+                <div class="chat-header-left clickable" onclick="openProfileSheet()">
+                    <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
+                    <div id="chat-header-avatar" class="avatar"></div>
+                    <div class="chat-header-meta">
+                        <strong id="chat-header-name"></strong>
+                        <p>${isGroup ? 'Group chat' : 'Private chat'}</p>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
                 </div>
             </div>
-            <div class="header-actions">
-                <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+            <div id="messages-view" class="messages-view"></div>
+            <div class="chat-input-area">
+                <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
+                <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
+                <input type="text" id="msg-input" placeholder="Type a message" onkeypress="if(event.key==='Enter') sendMsg()">
+                <button class="send-btn" onclick="sendMsg()">➤</button>
             </div>
-        </div>
-        <div id="messages-view" class="messages-view"></div>
-        <div class="chat-input-area">
-            <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
-            <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
-            <input type="text" id="msg-input" placeholder="Type a message" onkeypress="if(event.key==='Enter') sendMsg()">
-            <button class="send-btn" onclick="sendMsg()">➤</button>
         </div>
     `;
     byId('chat-header-name').textContent = name;
@@ -276,7 +358,6 @@ function renderChatPanel(name, pfp, isGroup) {
 }
 
 async function openChat(name, id, pfp, isGroup) {
-    if (isMobileView()) setMobileTab('chat');
     state.currentTargetID = id;
     state.currentTargetName = name;
     state.currentTargetPFP = pfp || '';
@@ -295,6 +376,7 @@ async function openChat(name, id, pfp, isGroup) {
     view.innerHTML = '';
     msgs.forEach(renderBubble);
     view.scrollTop = view.scrollHeight;
+    if (isMobileLayout()) setMobileTab('chat');
 }
 
 function messageBodyHtml(data) {
@@ -479,41 +561,4 @@ if (state.myID) {
 }
 
 
-function isMobileView() {
-    return window.innerWidth <= 760;
-}
-
-function setMobileTab(tab) {
-    const main = byId('main-app');
-    if (!main) return;
-    main.classList.remove('mobile-view-chats', 'mobile-view-chat', 'mobile-view-settings');
-    if (tab === 'chat') {
-        main.classList.add('mobile-view-chat');
-    } else if (tab === 'settings') {
-        main.classList.add('mobile-view-settings');
-    } else {
-        main.classList.add('mobile-view-chats');
-        tab = 'chats';
-    }
-
-    ['chats', 'chat', 'settings'].forEach((name) => {
-        byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab);
-    });
-}
-
-function syncResponsiveLayout() {
-    const main = byId('main-app');
-    if (!main || main.classList.contains('hidden')) return;
-    if (isMobileView()) {
-        if (!main.classList.contains('mobile-view-chats') && !main.classList.contains('mobile-view-chat') && !main.classList.contains('mobile-view-settings')) {
-            setMobileTab(state.currentTargetID ? 'chat' : 'chats');
-        }
-    } else {
-        main.classList.remove('mobile-view-chats', 'mobile-view-chat', 'mobile-view-settings');
-        ['chats', 'chat', 'settings'].forEach((name) => {
-            byId(`tab-btn-${name}`)?.classList.toggle('active', name === 'chats');
-        });
-    }
-}
-
-window.addEventListener('resize', syncResponsiveLayout);
+maybeShowMobileTabs();
