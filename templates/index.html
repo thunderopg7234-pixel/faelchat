@@ -63,6 +63,7 @@
                     <button class="chip active" data-filter="all" onclick="setListFilter('all', this)">All</button>
                     <button class="chip" data-filter="group" onclick="setListFilter('group', this)">Groups</button>
                     <button class="chip" data-filter="channel" onclick="setListFilter('channel', this)">Channels</button>
+                    <button class="chip" data-filter="archived" onclick="setListFilter('archived', this)">Archived</button>
                 </div>
 
                 <div class="search-wrap">
@@ -110,6 +111,7 @@
                     <button class="telegram-row" onclick="openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Theme Studio</span></button>
                     <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
                     <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
+                    <button class="telegram-row" onclick="setListFilter('archived', document.querySelector('.chip[data-filter=\'archived\']'))"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
                     <button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log Out</span></button>
                 </div>
 
@@ -185,6 +187,9 @@
             <div class="telegram-card profile-sheet-actions">
                 <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()"><span class="row-icon pink">📎</span><span>Send media</span></button>
                 <button class="telegram-row" onclick="copyChatIdentity()"><span class="row-icon pink">⎘</span><span>Copy ID</span></button>
+                <button class="telegram-row" onclick="toggleArchiveCurrentChat()"><span class="row-icon pink">🗃️</span><span>Archive / Unarchive</span></button>
+                <button class="telegram-row" onclick="toggleMuteCurrentChat()"><span class="row-icon pink">🔕</span><span>Mute / Unmute</span></button>
+                <button class="telegram-row" onclick="copyInviteLink()"><span class="row-icon pink">🔗</span><span>Copy invite / room code</span></button>
                 <button class="telegram-row" onclick="closeProfileSheet(); openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Choose theme</span></button>
             </div>
         </div>
@@ -195,6 +200,13 @@
         <button onclick="reactToCurrent('🔥')">🔥</button>
         <button onclick="reactToCurrent('😂')">😂</button>
         <button onclick="reactToCurrent('👍')">👍</button>
+    </div>
+
+    <div id="forward-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top"><h3>Forward message</h3><button class="icon-btn" onclick="closeModal('forward-modal')">✕</button></div>
+            <div id="forward-list" class="forward-list"></div>
+        </div>
     </div>
 
     <div id="toast" class="toast hidden"></div>

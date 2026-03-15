@@ -78,6 +78,9 @@ class Message(db.Model):
     edited_at = db.Column(db.DateTime, nullable=True)
     reply_to_id = db.Column(db.Integer, nullable=True, index=True)
     reactions = db.Column(db.Text, default='')
+    delivered_to = db.Column(db.Text, default='')
+    seen_by = db.Column(db.Text, default='')
+    forwarded_from = db.Column(db.String(120), default='')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
@@ -120,6 +123,9 @@ def ensure_schema():
     add_column_if_missing('message', 'edited_at', 'TIMESTAMP')
     add_column_if_missing('message', 'reply_to_id', 'INTEGER')
     add_column_if_missing('message', 'reactions', "TEXT DEFAULT ''")
+    add_column_if_missing('message', 'delivered_to', "TEXT DEFAULT ''")
+    add_column_if_missing('message', 'seen_by', "TEXT DEFAULT ''")
+    add_column_if_missing('message', 'forwarded_from', "VARCHAR(120) DEFAULT ''")
     add_column_if_missing('group', 'description', "VARCHAR(280) DEFAULT ''")
     add_column_if_missing('group', 'kind', "VARCHAR(20) DEFAULT 'group'")
     add_column_if_missing('group', 'owner_id', "VARCHAR(50) DEFAULT ''")
@@ -131,6 +137,9 @@ def ensure_schema():
         conn.execute(text("UPDATE \"group\" SET kind = 'group' WHERE kind IS NULL OR kind = ''"))
         conn.execute(text("UPDATE \"group_member\" SET role = 'member' WHERE role IS NULL OR role = ''"))
         conn.execute(text("UPDATE \"message\" SET reactions = '' WHERE reactions IS NULL"))
+        conn.execute(text("UPDATE \"message\" SET delivered_to = '' WHERE delivered_to IS NULL"))
+        conn.execute(text("UPDATE \"message\" SET seen_by = '' WHERE seen_by IS NULL"))
+        conn.execute(text("UPDATE \"message\" SET forwarded_from = '' WHERE forwarded_from IS NULL"))
 
 
 with app.app_context():
@@ -228,6 +237,19 @@ def reaction_summary(raw: str) -> list[dict]:
     return items
 
 
+def parse_simple_list(raw: str) -> list[str]:
+    return [part for part in (raw or '').split(',') if part]
+
+
+def append_simple_list(raw: str, value: str) -> str:
+    value = normalize_handle(value)
+    if not value:
+        return raw or ''
+    items = set(parse_simple_list(raw))
+    items.add(value)
+    return ','.join(sorted(items))
+
+
 def can_post(actor_id: str, target_code: str, is_group: bool) -> bool:
     if not is_group:
         return True
@@ -264,6 +286,9 @@ def message_payload(msg: Message) -> dict:
             'file_url': reply_message.file_url,
         } if reply_message else None,
         'reactions': reaction_summary(msg.reactions),
+        'delivered_to': parse_simple_list(msg.delivered_to),
+        'seen_by': parse_simple_list(msg.seen_by),
+        'forwarded_from': msg.forwarded_from or '',
     }
 
 
@@ -567,8 +592,22 @@ def disconnected():
 @socketio.on('join_chat')
 def join_chat_socket(data):
     room = (data or {}).get('room')
+    user_id = normalize_handle((data or {}).get('user_id') or '')
     if room:
         join_room(room)
+    if room and user_id:
+        changed = False
+        messages = Message.query.filter_by(room=room).all()
+        for msg in messages:
+            before_delivered = msg.delivered_to or ''
+            before_seen = msg.seen_by or ''
+            msg.delivered_to = append_simple_list(msg.delivered_to, user_id)
+            msg.seen_by = append_simple_list(msg.seen_by, user_id)
+            if msg.delivered_to != before_delivered or msg.seen_by != before_seen:
+                changed = True
+        if changed:
+            db.session.commit()
+            emit('room_receipts_updated', {'room': room, 'messages': [message_payload(m) for m in messages]}, room=room)
 
 
 @socketio.on('leave_chat')
@@ -604,6 +643,7 @@ def handle_private_message(data):
     target_id = normalize_handle((data or {}).get('target_id') or '')
     is_group = bool((data or {}).get('is_group'))
     reply_to_id = (data or {}).get('reply_to_id')
+    forwarded_from = ((data or {}).get('forwarded_from') or '')[:120]
 
     if not room or not sender_id or not sender_name:
         return
@@ -613,7 +653,11 @@ def handle_private_message(data):
         emit('flash_error', {'message': 'Only channel admins can post there.'}, room=request.sid)
         return
 
-    msg = Message(room=room, sender_id=sender_id, sender_name=sender_name, content=content, msg_type=msg_type, file_url=file_url, reply_to_id=reply_to_id)
+    delivered_to = append_simple_list('', sender_id)
+    seen_by = append_simple_list('', sender_id)
+    if not is_group and target_id in ONLINE_USERS:
+        delivered_to = append_simple_list(delivered_to, target_id)
+    msg = Message(room=room, sender_id=sender_id, sender_name=sender_name, content=content, msg_type=msg_type, file_url=file_url, reply_to_id=reply_to_id, forwarded_from=forwarded_from, delivered_to=delivered_to, seen_by=seen_by)
     db.session.add(msg)
     db.session.commit()
 

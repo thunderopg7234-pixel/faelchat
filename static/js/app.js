@@ -32,6 +32,11 @@ const state = {
   typingTimer: null,
   selectedMessageId: null,
   messageCache: {},
+  archivedChats: new Set(JSON.parse(localStorage.getItem('fArchivedChats') || '[]')),
+  mutedChats: new Set(JSON.parse(localStorage.getItem('fMutedChats') || '[]')),
+  drafts: JSON.parse(localStorage.getItem('fDrafts') || '{}'),
+  chatSearch: '',
+  forwardSourceId: null,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -142,6 +147,8 @@ function hydrateProfile() {
   byId('edit-bio').value = state.myBio;
 }
 
+function saveSet(key, setObj) { localStorage.setItem(key, JSON.stringify([...setObj])); }
+function roomKey(id = state.currentTargetID, isGroup = state.isCurrentChatGroup) { return `${isGroup ? 'group' : 'dm'}:${id}`; }
 function maybeShowMobileTabs() {
   byId('mobile-tabbar').classList.toggle('hidden', !state.myID);
 }
@@ -232,7 +239,14 @@ async function loadRecentChats() {
 
 function renderRecentChats() {
   const list = byId('chat-list');
-  const filtered = state.recentChats.filter((item) => state.listFilter === 'all' || (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter);
+  const filtered = state.recentChats.filter((item) => {
+    const key = `${item.is_group ? 'group' : 'dm'}:${item.id}`;
+    const archived = state.archivedChats.has(key);
+    if (state.listFilter === 'archived') return archived;
+    if (archived) return false;
+    if (state.listFilter === 'all') return true;
+    return (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter;
+  });
   if (!filtered.length) {
     list.innerHTML = '<div class="empty-mini">No chats yet</div>';
     return;
@@ -241,6 +255,8 @@ function renderRecentChats() {
     const kind = item.kind || (item.is_group ? 'group' : 'private');
     const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'person';
     const statusText = item.is_group ? `${kind}${item.role ? ` · ${item.role}` : ''}` : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+    const key = `${item.is_group ? 'group' : 'dm'}:${item.id}`;
+    const muted = state.mutedChats.has(key);
     return `
       <div class="chat-row ${state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group) ? 'active' : ''}" data-chat-id="${item.id}" data-group="${item.is_group}" onclick="openChat(${JSON.stringify(item.name)}, ${JSON.stringify(item.id)}, ${JSON.stringify(item.pfp || '')}, ${item.is_group}, ${JSON.stringify(item)})">
         <div class="avatar-row-wrap">
@@ -250,9 +266,9 @@ function renderRecentChats() {
         <div class="chat-meta">
           <div class="row-between"><strong>${escapeHtml(item.name)}</strong><small>${formatTime(item.time)}</small></div>
           <p>${escapeHtml(item.last_msg || statusText)}</p>
-          <small class="muted">${escapeHtml(statusText)}</small>
+          <small class="muted">${escapeHtml(statusText)}${muted ? ' · muted' : ''}</small>
         </div>
-        <span class="tag">${badge}</span>
+        <span class="tag">${badge}${muted ? ' · mute' : ''}</span>
       </div>
     `;
   }).join('');
@@ -355,6 +371,11 @@ function renderChatPanel(name, pfp, isGroup) {
       </div>
       <div id="pin-banner" class="pin-banner hidden"></div>
       <div id="reply-preview" class="reply-preview hidden"></div>
+      <div class="chat-tools-bar">
+        <input id="chat-search-input" class="chat-search-input" placeholder="Search in this chat" oninput="filterMessagesInView()">
+        <button class="icon-btn" onclick="toggleArchiveCurrentChat()">🗃️</button>
+        <button class="icon-btn" onclick="toggleMuteCurrentChat()">🔕</button>
+      </div>
       <div id="messages-view" class="messages-view"></div>
       <div class="chat-input-area">
         <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
@@ -383,6 +404,15 @@ function renderReplyPreview() {
 
 function clearReply() { state.replyTo = null; renderReplyPreview(); }
 
+function deliveryLabel(data) {
+  if (!data || data.sender_id !== state.myID) return '';
+  const seenOthers = (data.seen_by || []).filter((u) => u !== state.myID).length;
+  const deliveredOthers = (data.delivered_to || []).filter((u) => u !== state.myID).length;
+  if (seenOthers) return '✓✓';
+  if (deliveredOthers) return '✓';
+  return '•';
+}
+
 function updateChatHeaderStatus(text) { if (byId('chat-status-text')) byId('chat-status-text').textContent = text; }
 
 async function openChat(name, id, pfp, isGroup, meta = {}) {
@@ -399,12 +429,14 @@ async function openChat(name, id, pfp, isGroup, meta = {}) {
   renderReplyPreview();
   const room = buildRoom(id, isGroup);
   state.activeRoom = room;
-  socket.emit('join_chat', { room });
+  socket.emit('join_chat', { room, user_id: state.myID });
   const res = await fetch(`/history/${encodeURIComponent(room)}`);
   const msgs = await res.json();
   state.messageCache = {};
   const view = byId('messages-view');
   view.innerHTML = msgs.map(messageHtml).join('');
+  const draft = state.drafts[roomKey(id, isGroup)] || '';
+  setTimeout(() => { const input = byId('msg-input'); if (input) input.value = draft; }, 0);
   bindMessageActions();
   view.scrollTop = view.scrollHeight;
   if (isGroup) {
@@ -444,12 +476,13 @@ function messageBodyHtml(data) {
   if (data.is_deleted) return '<div class="bubble deleted">Message deleted</div>';
   const bubbleClass = data.sender_id === state.myID ? 'sent' : 'received';
   const safeText = data.content ? `<div>${escapeHtml(data.content).replaceAll('\n', '<br>')}</div>` : '';
+  const forwarded = data.forwarded_from ? `<div class="forward-label">Forwarded from ${escapeHtml(data.forwarded_from)}</div>` : '';
   const reply = data.reply_preview ? `<div class="reply-card"><strong>${escapeHtml(data.reply_preview.sender_name)}</strong><p>${escapeHtml(data.reply_preview.content || '[' + data.reply_preview.msg_type + ']')}</p></div>` : '';
-  if (data.msg_type === 'image') return `<div class="bubble ${bubbleClass} image-wrap">${reply}<img class="message-media" src="${data.file_url}" alt="image">${safeText}</div>`;
-  if (data.msg_type === 'video') return `<div class="bubble ${bubbleClass} video-wrap">${reply}<video class="message-media" src="${data.file_url}" controls playsinline></video>${safeText}</div>`;
-  if (data.msg_type === 'audio') return `<div class="bubble ${bubbleClass} audio-wrap">${reply}<audio src="${data.file_url}" controls></audio>${safeText}</div>`;
-  if (data.msg_type === 'file') return `<div class="bubble ${bubbleClass}">${reply}<a class="file-card" href="${data.file_url}" target="_blank"><span>📁</span><span>${escapeHtml(data.content || 'Open file')}</span></a></div>`;
-  return `<div class="bubble ${bubbleClass}">${reply}${safeText}</div>`;
+  if (data.msg_type === 'image') return `<div class="bubble ${bubbleClass} image-wrap">${forwarded}${reply}<img class="message-media" src="${data.file_url}" alt="image">${safeText}</div>`;
+  if (data.msg_type === 'video') return `<div class="bubble ${bubbleClass} video-wrap">${forwarded}${reply}<video class="message-media" src="${data.file_url}" controls playsinline></video>${safeText}</div>`;
+  if (data.msg_type === 'audio') return `<div class="bubble ${bubbleClass} audio-wrap">${forwarded}${reply}<audio src="${data.file_url}" controls></audio>${safeText}</div>`;
+  if (data.msg_type === 'file') return `<div class="bubble ${bubbleClass}">${forwarded}${reply}<a class="file-card" href="${data.file_url}" target="_blank"><span>📁</span><span>${escapeHtml(data.content || 'Open file')}</span></a></div>`;
+  return `<div class="bubble ${bubbleClass}">${forwarded}${reply}${safeText}</div>`;
 }
 
 function messageHtml(data) {
@@ -461,10 +494,11 @@ function messageHtml(data) {
       <div class="msg-stack">
         ${!sent && state.isCurrentChatGroup ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
         ${messageBodyHtml(data)}
-        <div class="bubble-time">${formatTime(data.timestamp)} ${data.edited_at ? '· edited' : ''}</div>
+        <div class="bubble-time">${formatTime(data.timestamp)} ${data.edited_at ? '· edited' : ''} ${deliveryLabel(data)}</div>
         <div class="message-actions">
           <button onclick="prepareReplyById(${data.id})">Reply</button>
           <button onclick="openReactionPicker(${data.id}, this)">React</button>
+          <button onclick="openForwardModal(${data.id})">Forward</button>
           ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button onclick="deleteMyMessage(${data.id})">Delete</button>` : ''}
           ${state.isCurrentChatGroup && ['owner','admin'].includes(state.currentRole) ? `<button onclick="pinMessage(${data.id})">Pin</button>` : ''}
         </div>
@@ -508,6 +542,8 @@ async function sendMsg() {
     reply_to_id: state.replyTo?.id || null,
   });
   input.value = '';
+  delete state.drafts[roomKey()];
+  localStorage.setItem('fDrafts', JSON.stringify(state.drafts));
   clearReply();
   socket.emit('typing', { room: state.activeRoom, user_id: state.myID, is_typing: false });
 }
@@ -567,7 +603,10 @@ async function saveProfile() {
   hydrateProfile(); closeModal('profile-modal'); await loadRecentChats(); showToast('Profile updated');
 }
 
+function persistDraft() { const input = byId('msg-input'); if (!input || !state.currentTargetID) return; state.drafts[roomKey()] = input.value; localStorage.setItem('fDrafts', JSON.stringify(state.drafts)); }
+
 function handleTypingInput() {
+  persistDraft();
   const now = Date.now();
   if (now - state.lastTypingSent > 900) {
     socket.emit('typing', { room: state.activeRoom, user_id: state.myID, is_typing: true });
@@ -590,6 +629,83 @@ async function editMyMessage(id) {
   const next = prompt('Edit message', current);
   if (!next || next.trim() === current.trim()) return;
   socket.emit('edit_message', { msg_id: id, sender_id: state.myID, content: next.trim() });
+}
+
+
+function filterMessagesInView() {
+  state.chatSearch = byId('chat-search-input')?.value.trim().toLowerCase() || '';
+  document.querySelectorAll('.msg-wrapper').forEach((wrap) => {
+    const text = wrap.innerText.toLowerCase();
+    wrap.classList.toggle('search-hidden', Boolean(state.chatSearch) && !text.includes(state.chatSearch));
+  });
+}
+
+function toggleArchiveCurrentChat() {
+  if (!state.currentTargetID) return;
+  const key = roomKey();
+  if (state.archivedChats.has(key)) {
+    state.archivedChats.delete(key);
+    showToast('Chat restored');
+  } else {
+    state.archivedChats.add(key);
+    showToast('Chat archived');
+  }
+  saveSet('fArchivedChats', state.archivedChats);
+  renderRecentChats();
+  closeProfileSheet();
+}
+
+function toggleMuteCurrentChat() {
+  if (!state.currentTargetID) return;
+  const key = roomKey();
+  if (state.mutedChats.has(key)) {
+    state.mutedChats.delete(key);
+    showToast('Notifications unmuted');
+  } else {
+    state.mutedChats.add(key);
+    showToast('Chat muted');
+  }
+  saveSet('fMutedChats', state.mutedChats);
+  renderRecentChats();
+  closeProfileSheet();
+}
+
+function copyInviteLink() {
+  const value = state.isCurrentChatGroup ? `${location.origin}/#join=${state.currentTargetID}` : `@${state.currentTargetID}`;
+  navigator.clipboard?.writeText(value);
+  showToast('Invite copied');
+}
+
+function openForwardModal(id) {
+  state.forwardSourceId = id;
+  const source = state.messageCache[id];
+  const list = byId('forward-list');
+  const candidates = state.recentChats.filter((chat) => !(chat.id === state.currentTargetID && String(chat.is_group) === String(state.isCurrentChatGroup)));
+  list.innerHTML = `<div class="empty-mini">Forwarding: ${escapeHtml(source?.content || '[' + (source?.msg_type || 'message') + ']')}</div>` + candidates.map((item) => `
+    <button class="forward-row" onclick="forwardMessageTo(${id}, ${JSON.stringify(item.id)}, ${item.is_group})">
+      <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+      <div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.kind || (item.is_group ? 'group' : 'private'))}</p></div>
+    </button>
+  `).join('');
+  openModal('forward-modal');
+}
+
+async function forwardMessageTo(sourceId, targetId, isGroup) {
+  const source = state.messageCache[sourceId];
+  if (!source) return;
+  socket.emit('private_message', {
+    room: isGroup ? `group_${targetId}` : [state.myID, targetId].sort().join('_'),
+    sender_id: state.myID,
+    sender_name: state.myName,
+    target_id: targetId,
+    is_group: isGroup,
+    msg_type: source.msg_type,
+    content: source.content,
+    file_url: source.file_url,
+    forwarded_from: `${source.sender_name}`,
+  });
+  closeModal('forward-modal');
+  showToast('Message forwarded');
 }
 
 function openReactionPicker(id, anchor) {
@@ -638,6 +754,15 @@ socket.on('typing_update', (data) => {
   const otherUsers = (data.users || []).filter((u) => u !== state.myID);
   if (otherUsers.length) updateChatHeaderStatus('typing…');
 });
+socket.on('room_receipts_updated', (payload) => {
+  if (payload.room !== state.activeRoom) return;
+  (payload.messages || []).forEach((msg) => {
+    state.messageCache[msg.id] = msg;
+    const wrap = document.querySelector(`[data-msg-id="${msg.id}"]`);
+    if (wrap) wrap.outerHTML = messageHtml(msg);
+  });
+});
+
 socket.on('room_meta_updated', (payload) => {
   if (payload.target_id !== state.currentTargetID) return;
   showPinBanner(payload.room.pin_message);
