@@ -187,18 +187,38 @@
 
     <div id="chat-profile-sheet" class="profile-sheet hidden">
         <div class="profile-sheet-backdrop" onclick="closeProfileSheet()"></div>
-        <div class="profile-sheet-card glass-card">
+        <div class="profile-sheet-card divine-profile-card glass-card">
             <button class="profile-sheet-close" onclick="closeProfileSheet()">✕</button>
-            <div class="profile-sheet-hero">
-                <div id="sheet-avatar" class="avatar large"></div>
-                <div class="profile-sheet-meta">
-                    <h3 id="sheet-name">User</h3>
+            <div id="profile-hero-banner" class="profile-hero-banner"></div>
+            <div class="profile-hero-content">
+                <div id="sheet-avatar" class="avatar huge divine-avatar"></div>
+                <div class="profile-hero-meta">
+                    <div class="profile-name-row">
+                        <h3 id="sheet-name">User</h3>
+                        <span id="sheet-verified" class="badge-pill hidden">Verified</span>
+                    </div>
                     <p id="sheet-handle">@username</p>
-                    <span id="sheet-kind" class="badge-pill">Private chat</span>
-                    <small id="sheet-bio">No bio yet</small>
+                    <div class="profile-presence-row">
+                        <span id="sheet-presence-dot" class="online-dot inline"></span>
+                        <span id="sheet-presence">offline</span>
+                    </div>
+                    <div id="sheet-badges" class="profile-badges"></div>
                 </div>
             </div>
-            <div class="telegram-card profile-sheet-actions">
+            <div class="profile-stat-grid">
+                <div class="profile-stat-card"><span class="label">Type</span><strong id="sheet-kind">Private chat</strong></div>
+                <div class="profile-stat-card"><span class="label">Mutual</span><strong id="sheet-mutual">0 rooms</strong></div>
+                <div class="profile-stat-card"><span class="label">Members</span><strong id="sheet-members">—</strong></div>
+            </div>
+            <div class="telegram-card divine-info-card">
+                <div class="telegram-info-row"><span>Bio</span><strong id="sheet-bio">No bio yet</strong></div>
+                <div class="telegram-info-row"><span>Status</span><strong id="sheet-status">—</strong></div>
+                <div class="telegram-info-row"><span>Username</span><strong id="sheet-username">—</strong></div>
+                <div class="telegram-info-row"><span>Birthday</span><strong id="sheet-birthday">—</strong></div>
+                <div class="telegram-info-row"><span>Mood</span><strong id="sheet-mood">—</strong></div>
+                <div class="telegram-info-row"><span>Music</span><strong id="sheet-music">—</strong></div>
+            </div>
+            <div class="telegram-card profile-sheet-actions divine-actions-card">
                 <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()"><span class="row-icon pink">📎</span><span>Send media</span></button>
                 <button class="telegram-row" onclick="openMediaGallery()"><span class="row-icon pink">🖼️</span><span>Media gallery</span></button>
                 <button class="telegram-row" onclick="openMembersModal()"><span class="row-icon pink">👥</span><span>Members & Roles</span></button>
@@ -212,7 +232,7 @@
         </div>
     </div>
 
-    <div id="reaction-picker" class="reaction-picker hidden">
+<div id="reaction-picker" class="reaction-picker hidden">
         <button onclick="reactToCurrent('❤️')">❤️</button>
         <button onclick="reactToCurrent('🔥')">🔥</button>
         <button onclick="reactToCurrent('😂')">😂</button>

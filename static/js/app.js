@@ -232,13 +232,84 @@ function formatRelativeStatus(raw) {
   return raw;
 }
 
-function openProfileSheet() {
+async function openProfileSheet() {
+  const banner = byId('profile-hero-banner');
+  const verified = byId('sheet-verified');
+  const badges = byId('sheet-badges');
+  const dot = byId('sheet-presence-dot');
   setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP);
   byId('sheet-name').textContent = state.currentTargetName || 'User';
-  byId('sheet-handle').textContent = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
-  byId('sheet-kind').textContent = state.currentTargetKind;
+  byId('sheet-handle').textContent = state.isCurrentChatGroup ? `#${state.currentTargetID}` : `@${state.currentTargetID}`;
+  byId('sheet-kind').textContent = state.currentTargetKind || (state.isCurrentChatGroup ? 'group' : 'private');
   byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
+  byId('sheet-status').textContent = '—';
+  byId('sheet-username').textContent = state.isCurrentChatGroup ? `#${state.currentTargetID}` : `@${state.currentTargetID}`;
+  byId('sheet-birthday').textContent = '—';
+  byId('sheet-mood').textContent = '—';
+  byId('sheet-music').textContent = '—';
+  byId('sheet-mutual').textContent = state.isCurrentChatGroup ? '—' : '0 rooms';
+  byId('sheet-members').textContent = state.isCurrentChatGroup ? 'Loading…' : '—';
+  byId('sheet-presence').textContent = 'Loading…';
+  verified.classList.add('hidden');
+  badges.innerHTML = '';
+  dot.classList.remove('hidden');
+  banner.style.backgroundImage = '';
+  banner.classList.remove('banner-image');
   byId('chat-profile-sheet').classList.remove('hidden');
+
+  if (state.isCurrentChatGroup) {
+    try {
+      const res = await fetch(`/room_meta/${encodeURIComponent(state.currentTargetID)}`);
+      const data = await res.json();
+      if (data.status === 'success') {
+        const room = data.room;
+        state.currentTargetBio = room.description || state.currentTargetBio;
+        byId('sheet-name').textContent = room.name || state.currentTargetName;
+        byId('sheet-handle').textContent = room.public_handle ? `@${room.public_handle}` : `#${room.code}`;
+        byId('sheet-kind').textContent = room.kind === 'channel' ? 'Channel' : 'Group';
+        byId('sheet-bio').textContent = room.description || 'No description yet';
+        byId('sheet-status').textContent = room.visibility === 'private' ? 'Private room' : 'Public room';
+        byId('sheet-username').textContent = room.public_handle ? `@${room.public_handle}` : `#${room.code}`;
+        byId('sheet-members').textContent = `${room.member_count || 0} ${room.kind === 'channel' ? 'subscribers' : 'members'}`;
+        byId('sheet-presence').textContent = `${room.member_count || 0} ${room.kind === 'channel' ? 'subscribers' : 'members'}`;
+        dot.classList.add('hidden');
+        if (room.is_verified) verified.classList.remove('hidden');
+        badges.innerHTML = `<span class="badge-pill">${room.visibility || 'public'}</span><span class="badge-pill">${room.kind}</span>${room.join_approval ? '<span class="badge-pill">approval</span>' : ''}`;
+      }
+    } catch (e) {}
+  } else {
+    try {
+      const [profileRes, mutualRes] = await Promise.all([
+        fetch(`/profile/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`),
+        fetch(`/mutual_rooms/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`)
+      ]);
+      const pdata = await profileRes.json();
+      const mdata = await mutualRes.json();
+      if (pdata.status === 'success') {
+        byId('sheet-name').textContent = pdata.username || state.currentTargetName;
+        byId('sheet-handle').textContent = `@${pdata.tele_id}`;
+        byId('sheet-kind').textContent = 'Private chat';
+        byId('sheet-bio').textContent = pdata.bio || 'No bio yet';
+        byId('sheet-status').textContent = pdata.status_text || '—';
+        byId('sheet-username').textContent = `@${pdata.tele_id}`;
+        byId('sheet-birthday').textContent = pdata.birthday || '—';
+        byId('sheet-mood').textContent = pdata.mood || '—';
+        byId('sheet-music').textContent = pdata.profile_music || '—';
+        byId('sheet-presence').textContent = formatRelativeStatus(pdata.last_seen_label || (pdata.online ? 'online' : 'offline'));
+        dot.classList.toggle('hidden', !pdata.online);
+        if (pdata.banner_url) {
+          banner.style.backgroundImage = `linear-gradient(180deg, rgba(10,10,14,.06), rgba(10,10,14,.28)), url(${pdata.banner_url})`;
+          banner.classList.add('banner-image');
+        }
+        badges.innerHTML = `${pdata.mood ? `<span class="badge-pill">${escapeHtml(pdata.mood)}</span>` : ''}${pdata.profile_music ? '<span class="badge-pill">music</span>' : ''}`;
+      }
+      if (mdata.status === 'success') {
+        byId('sheet-mutual').textContent = `${mdata.count || 0} rooms`;
+      }
+    } catch (e) {
+      byId('sheet-presence').textContent = 'offline';
+    }
+  }
 }
 
 function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
@@ -250,7 +321,21 @@ async function startSession() {
   maybeShowMobileTabs();
   hydrateProfile();
   renderThemeCards();
-  applyTheme(state.myTheme, false);
+  
+byId('suggestions')?.addEventListener('click', async (e) => {
+  const row = e.target.closest('.suggestion-row');
+  if (!row) return;
+  const item = {
+    type: row.dataset.type,
+    id: row.dataset.id,
+    name: row.dataset.name,
+    pfp: row.dataset.pfp,
+    bio: row.dataset.bio,
+  };
+  await chooseSuggestion(item);
+});
+
+applyTheme(state.myTheme, false);
   socket.emit('connect_radar', { my_id: state.myID });
   await loadPrivacySettings();
   await loadRecentChats();
@@ -308,46 +393,60 @@ function renderRecentChats() {
 async function doSearch() {
   const q = byId('search-input').value.trim();
   const suggestions = byId('suggestions');
+  const quick = byId('quick-create-row');
   if (!q) {
     suggestions.innerHTML = '';
     suggestions.classList.remove('show');
+    quick?.classList.remove('searching');
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
   const rows = await res.json();
   suggestions.classList.add('show');
+  quick?.classList.add('searching');
   suggestions.innerHTML = rows.length ? rows.map((item) => {
-    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Read-only by default' : 'Group room');
-    const isGroup = item.type !== 'user';
+    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Tap to open channel' : 'Tap to open group');
+    const subtitle = item.type === 'user' ? '@' + (item.id || '') : (item.public_handle ? '@' + item.public_handle : (item.description || item.id || ''));
     return `
-      <div class="suggestion-row" onclick="chooseSuggestion(${JSON.stringify(item)})">
+      <button type="button" class="suggestion-row" data-type="${escapeHtml(item.type || '')}" data-id="${escapeHtml(item.id || '')}" data-name="${escapeHtml(item.name || '')}" data-pfp="${escapeHtml(item.pfp || '')}" data-bio="${escapeHtml(item.bio || item.description || '')}">
         <div class="avatar-row-wrap">
           <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
           ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
         </div>
         <div class="chat-meta">
           <strong>${escapeHtml(item.name)}</strong>
-          <p>${escapeHtml(isGroup ? item.description || item.id : '@' + item.id)}</p>
+          <p>${escapeHtml(subtitle)}</p>
           <small class="muted">${escapeHtml(label)}</small>
         </div>
         <span class="tag">${escapeHtml(item.type)}</span>
-      </div>`;
+      </button>`;
   }).join('') : '<div class="empty-mini">No results</div>';
 }
 
 async function chooseSuggestion(item) {
   byId('search-input').value = '';
+  byId('suggestions').innerHTML = '';
   byId('suggestions').classList.remove('show');
-  if (item.type === 'user') {
-    openChat(item.name, item.id, item.pfp || '', false, item);
-  } else {
-    const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: item.id, tele_id: state.myID }) });
-    const data = await res.json();
-    if (data.status !== 'success') return showToast(data.message || 'Could not join');
-    showToast(`Joined ${item.type}`);
-    await loadRecentChats();
-    openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
+  byId('quick-create-row')?.classList.remove('searching');
+  if (!item || !item.id) {
+    showToast('Invalid search result');
+    return;
   }
+  if (item.type === 'user') {
+    await openChat(item.name, item.id, item.pfp || '', false, item);
+    setMobileTab('chat');
+    return;
+  }
+  const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: item.id, tele_id: state.myID }) });
+  const data = await res.json();
+  if (data.status === 'pending') {
+    showToast('Join request sent');
+    return;
+  }
+  if (data.status !== 'success') return showToast(data.message || 'Could not open');
+  await loadRecentChats();
+  await openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
+  setMobileTab('chat');
 }
 
 async function createRoom() {
@@ -808,7 +907,7 @@ socket.on('room_meta_updated', (payload) => {
 });
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.search-wrap')) byId('suggestions').classList.remove('show');
+  if (!event.target.closest('.search-wrap')) { byId('suggestions').classList.remove('show'); byId('quick-create-row')?.classList.remove('searching'); }
   if (!event.target.closest('#reaction-picker') && !event.target.closest('.message-actions button')) byId('reaction-picker').classList.add('hidden');
   if (event.target.classList.contains('modal')) event.target.classList.add('hidden');
 });
