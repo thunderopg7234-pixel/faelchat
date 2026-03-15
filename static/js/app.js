@@ -1272,3 +1272,270 @@ function bindDivineTapHandlers() {
 }
 
 window.addEventListener('load', bindDivineTapHandlers);
+
+
+/* ---- Godly room polish patch ---- */
+state.messageActionOpenId = null;
+
+function shouldGroupWith(prev, curr) {
+  return !!prev && !!curr && prev.sender_id === curr.sender_id;
+}
+
+function renderMessageList(msgs) {
+  state.messageCache = {};
+  const view = byId('messages-view');
+  if (!view) return;
+  view.innerHTML = (msgs || []).map((msg, index, arr) => godlyMessageHtml(msg, index, arr)).join('');
+  bindMessageMenus();
+}
+
+function godlyActionButtons(data, sent) {
+  return `
+    <button onclick="prepareReplyById(${data.id})">Reply</button>
+    <button onclick="openReactionPicker(${data.id}, this)">React</button>
+    <button onclick="openForwardModal(${data.id})">Forward</button>
+    <button onclick="saveMessageById(${data.id})">Save</button>
+    <button onclick="translateMessageById(${data.id})">Translate</button>
+    ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button onclick="deleteMyMessage(${data.id})">Delete</button>` : ''}
+    ${state.isCurrentChatGroup && ['owner','admin'].includes(state.currentRole) ? `<button onclick="pinMessage(${data.id})">Pin</button>` : ''}
+  `;
+}
+
+function godlyMessageHtml(data, index = 0, arr = [data]) {
+  state.messageCache[data.id] = data;
+  const sent = data.sender_id === state.myID;
+  const prev = arr[index - 1];
+  const next = arr[index + 1];
+  const samePrev = shouldGroupWith(prev, data);
+  const sameNext = shouldGroupWith(data, next);
+  const showAvatar = !sent && !samePrev;
+  const showSender = !sent && state.isCurrentChatGroup && !samePrev;
+  const showTime = !sameNext;
+  const menuOpen = state.messageActionOpenId === data.id;
+  const toggle = `<button class="msg-action-toggle ${sent ? 'left' : 'right'}" onclick="toggleMessageMenu(${data.id}, event)">⋯</button>`;
+  return `
+    <div class="msg-wrapper ${sent ? 'sent' : 'received'} ${samePrev ? 'grouped-prev' : ''} ${sameNext ? 'grouped-next' : ''}" data-msg-id="${data.id}">
+      ${sent ? toggle : ''}
+      ${showAvatar ? `<div class="avatar mini" style="background-image:${data.sender_pfp ? `url(${data.sender_pfp})` : 'none'}">${data.sender_pfp ? '' : escapeHtml(getInitial(data.sender_name))}</div>` : `<div class="avatar-spacer ${sent ? 'hidden-spacer' : ''}"></div>`}
+      <div class="msg-stack">
+        ${showSender ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
+        ${messageBodyHtml(data)}
+        ${showTime ? `<div class="bubble-time">${formatTime(data.timestamp)} ${data.edited_at ? '· edited' : ''} ${deliveryLabel(data)}</div>` : ''}
+        <div class="message-actions ${menuOpen ? '' : 'hidden'}" id="msg-actions-${data.id}">${godlyActionButtons(data, sent)}</div>
+        <div class="reaction-row">${(data.reactions || []).map((r) => `<button class="reaction-pill" onclick="toggleReaction(${data.id}, '${r.emoji}')">${r.emoji} <span>${r.count}</span></button>`).join('')}</div>
+      </div>
+      ${sent ? '' : toggle}
+    </div>`;
+}
+
+function toggleMessageMenu(id, event) {
+  event?.stopPropagation();
+  state.messageActionOpenId = state.messageActionOpenId === id ? null : id;
+  const msgs = Object.values(state.messageCache).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+  renderMessageList(msgs);
+  const view = byId('messages-view');
+  if (view) view.scrollTop = view.scrollHeight;
+}
+
+function bindMessageMenus() {
+  document.querySelectorAll('.message-actions').forEach((el) => {
+    if (!el.id) return;
+    if (el.classList.contains('hidden')) return;
+  });
+}
+
+function saveMessageById(id) {
+  const msg = state.messageCache[id];
+  if (!msg) return;
+  const exists = state.savedMessages.some((m) => m.id === id && m.room === state.activeRoom);
+  if (exists) return showToast('Already saved');
+  state.savedMessages.unshift({ ...msg, room: state.activeRoom });
+  localStorage.setItem('fSavedMessages', JSON.stringify(state.savedMessages));
+  showToast('Saved message');
+}
+
+function translateMessageById(id) {
+  const msg = state.messageCache[id];
+  if (!msg?.content) return showToast('No text to translate');
+  navigator.clipboard?.writeText(msg.content);
+  showToast('Text copied for translate');
+}
+
+const __prevRenderChatPanel = renderChatPanel;
+renderChatPanel = function(name, pfp, isGroup) {
+  const panel = byId('chat-panel');
+  panel.className = 'chat-panel glass-card';
+  panel.innerHTML = `
+    <div class="chat-shell telegram-room-shell">
+      <div class="chat-header telegram-room-header">
+        <div class="chat-header-left clickable" onclick="openProfileSheet()">
+          <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
+          <div id="chat-header-avatar" class="avatar"></div>
+          <div class="chat-header-meta">
+            <strong id="chat-header-name"></strong>
+            <p id="chat-status-text">Loading…</p>
+          </div>
+        </div>
+        <div class="header-actions compact-actions">
+          <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+          <button class="icon-btn" onclick="toggleHeaderDrawer(event)">⋯</button>
+        </div>
+      </div>
+      <div id="header-drawer" class="header-drawer hidden">
+        <div class="header-drawer-inner glass-card">
+          <div class="header-drawer-top"><strong>Chat options</strong><button class="icon-btn" onclick="toggleHeaderDrawer(event, true)">✕</button></div>
+          <div class="header-drawer-grid">
+            <button class="telegram-row compact" onclick="openMediaGallery()">🖼️ Media</button>
+            <button class="telegram-row compact" onclick="toggleArchiveCurrentChat()">🗃️ Archive</button>
+            <button class="telegram-row compact" onclick="toggleMuteCurrentChat()">🔕 Mute</button>
+            <button class="telegram-row compact" onclick="copyInviteLink()">🔗 Invite</button>
+            <button class="telegram-row compact" onclick="openModal('theme-modal')">🎨 Theme</button>
+            <button class="telegram-row compact" onclick="openProfileSheet()">👤 Profile</button>
+          </div>
+          <div class="header-search-row"><input id="chat-search-input" class="chat-search-input" placeholder="Search in this chat" oninput="filterMessagesInView()"></div>
+        </div>
+      </div>
+      <div id="pin-banner" class="pin-banner hidden"></div>
+      <div id="reply-preview" class="reply-preview hidden"></div>
+      <div id="messages-view" class="messages-view"></div>
+      <div class="chat-input-area telegram-composer">
+        <button class="attach-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+        <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
+        <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
+        <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
+        <button class="send-btn" onclick="sendMsg()">➤</button>
+      </div>
+    </div>`;
+  byId('chat-header-name').textContent = name;
+  setAvatar(byId('chat-header-avatar'), name, pfp);
+};
+
+function toggleHeaderDrawer(event, forceClose = false) {
+  event?.stopPropagation();
+  const drawer = byId('header-drawer');
+  if (!drawer) return;
+  drawer.classList.toggle('hidden', forceClose ? true : !drawer.classList.contains('hidden'));
+}
+
+const __prevOpenChat = openChat;
+openChat = async function(name, id, pfp, isGroup, meta = {}) {
+  if (state.activeRoom) socket.emit('leave_chat', { room: state.activeRoom });
+  state.currentTargetID = id;
+  state.currentTargetName = name;
+  state.currentTargetPFP = pfp || '';
+  state.currentTargetBio = meta.bio || meta.description || '';
+  state.currentTargetKind = meta.kind || (isGroup ? 'group' : 'private');
+  state.currentRole = meta.role || 'member';
+  state.isCurrentChatGroup = isGroup;
+  state.replyTo = null;
+  state.messageActionOpenId = null;
+  renderChatPanel(name, pfp, isGroup);
+  renderReplyPreview();
+  const room = buildRoom(id, isGroup);
+  state.activeRoom = room;
+  socket.emit('join_chat', { room, user_id: state.myID });
+  const res = await fetch(`/history/${encodeURIComponent(room)}`);
+  const msgs = await res.json();
+  renderMessageList(msgs);
+  const draft = state.drafts[roomKey(id, isGroup)] || '';
+  setTimeout(() => { const input = byId('msg-input'); if (input) input.value = draft; }, 0);
+  const view = byId('messages-view');
+  if (view) view.scrollTop = view.scrollHeight;
+  if (isGroup) {
+    const metaRes = await fetch(`/room_meta/${encodeURIComponent(id)}`);
+    const metaData = await metaRes.json();
+    if (metaData.status === 'success') {
+      state.currentTargetBio = metaData.room.description || '';
+      state.currentTargetKind = metaData.room.kind;
+      state.roomVisibility = metaData.room.visibility || 'public';
+      state.roomInviteToken = metaData.room.invite_token || '';
+      showPinBanner(metaData.room.pin_message);
+      updateChatHeaderStatus(`${metaData.room.kind} · ${metaData.room.member_count} members · ${state.roomVisibility}`);
+    }
+  } else {
+    const pRes = await fetch(`/profile/${encodeURIComponent(id)}?viewer_id=${encodeURIComponent(state.myID)}`);
+    const pdata = await pRes.json();
+    if (pdata.status === 'success') {
+      state.currentTargetBio = pdata.bio || '';
+      updateChatHeaderStatus(formatRelativeStatus(pdata.last_seen_label || (pdata.online ? 'online' : 'offline')));
+    }
+  }
+  renderRecentChats();
+  document.body.classList.add('chat-room-open');
+  if (isMobileLayout()) setMobileTab('chat');
+};
+
+const __prevCloseCurrentChat = closeCurrentChat;
+closeCurrentChat = function() {
+  document.body.classList.remove('chat-room-open');
+  const drawer = byId('header-drawer');
+  if (drawer) drawer.classList.add('hidden');
+  __prevCloseCurrentChat();
+};
+
+const __prevRenderBubble = renderBubble;
+renderBubble = function(data) {
+  state.messageCache[data.id] = data;
+  const msgs = Object.values(state.messageCache).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+  renderMessageList(msgs);
+  const view = byId('messages-view');
+  if (view) view.scrollTop = view.scrollHeight;
+};
+
+socket.off?.('new_message');
+socket.on('new_message', (data) => {
+  if (data.room === state.activeRoom) renderBubble(data);
+  loadRecentChats();
+});
+
+socket.on('message_edited', (data) => {
+  state.messageCache[data.id] = data;
+  const msgs = Object.values(state.messageCache).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+  renderMessageList(msgs);
+});
+
+socket.on('room_receipts_updated', (payload) => {
+  if (payload.room !== state.activeRoom) return;
+  (payload.messages || []).forEach((msg) => { state.messageCache[msg.id] = msg; });
+  const msgs = Object.values(state.messageCache).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+  renderMessageList(msgs);
+});
+
+window.addEventListener('click', (event) => {
+  if (!event.target.closest('#header-drawer') && !event.target.closest('.header-actions')) byId('header-drawer')?.classList.add('hidden');
+  if (!event.target.closest('.msg-action-toggle') && !event.target.closest('.message-actions')) {
+    if (state.messageActionOpenId !== null) {
+      state.messageActionOpenId = null;
+      const msgs = Object.values(state.messageCache).sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+      if (msgs.length && byId('messages-view')) renderMessageList(msgs);
+    }
+  }
+});
+
+bindDivineTapHandlers = function() {
+  const chatList = byId('chat-list');
+  if (chatList && !chatList.dataset.boundTap) {
+    chatList.dataset.boundTap = '1';
+    chatList.addEventListener('click', async (e) => {
+      const row = e.target.closest('.chat-row');
+      if (!row) return;
+      const metaRaw = row.dataset.chatMeta ? decodeURIComponent(row.dataset.chatMeta) : '{}';
+      let meta = {};
+      try { meta = JSON.parse(metaRaw); } catch (e) {}
+      await openChat(row.dataset.chatName || meta.name || '', row.dataset.chatId || meta.id || '', row.dataset.chatPfp || meta.pfp || '', row.dataset.chatGroup === '1', meta);
+    });
+  }
+  const sugg = byId('suggestions');
+  if (sugg && !sugg.dataset.boundTap) {
+    sugg.dataset.boundTap = '1';
+    sugg.addEventListener('click', async (e) => {
+      const row = e.target.closest('.suggestion-row');
+      if (!row) return;
+      let item = {};
+      try { item = JSON.parse(decodeURIComponent(row.dataset.item || '%7B%7D')); } catch (e) {}
+      await chooseSuggestion(item);
+    });
+  }
+};
+
+window.addEventListener('load', bindDivineTapHandlers);

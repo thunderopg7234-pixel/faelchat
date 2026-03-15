@@ -146,3 +146,50 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;background:ra
   .profile-sheet-card{width:min(100vw - 12px, 460px);bottom:8px}
   .profile-sheet-hero{min-height:150px;padding:18px}
 }
+
+
+/* ---- Godly room layout patch ---- */
+body.chat-room-open .mobile-tabbar{display:none!important}
+.main-app[data-mobile-tab="chat"] ~ .mobile-tabbar{display:none!important}
+.telegram-room-shell{height:100%;min-height:0}
+.telegram-room-header{padding:14px 16px}
+.compact-actions{gap:8px}
+.header-drawer{position:sticky;top:74px;z-index:8;padding:8px 14px 0}
+.header-drawer-inner{padding:14px 14px 12px;border-radius:22px;background:color-mix(in srgb, var(--card-strong) 94%, transparent);border:1px solid var(--line)}
+.header-drawer-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.header-drawer-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.telegram-row.compact{display:grid;place-items:center;text-align:center;padding:12px 10px;border-radius:18px;background:color-mix(in srgb, var(--card-strong) 96%, transparent);border:1px solid var(--line);font-weight:700}
+.header-search-row{margin-top:12px}
+.telegram-composer{box-shadow:0 -8px 24px rgba(0,0,0,.08)}
+.messages-view{padding-top:14px}
+.msg-wrapper{position:relative;gap:8px;align-items:flex-end;max-width:88%}
+.msg-wrapper.grouped-prev{margin-top:-6px}
+.msg-wrapper.grouped-next{margin-bottom:-2px}
+.msg-wrapper.sent{padding-left:30px}
+.msg-wrapper.received{padding-right:30px}
+.avatar-spacer{width:28px;flex:0 0 28px}
+.avatar-spacer.hidden-spacer{display:none}
+.msg-stack{gap:4px}
+.msg-wrapper.grouped-prev .msg-sender{display:none}
+.msg-action-toggle{position:absolute;bottom:6px;width:24px;height:24px;border:none;border-radius:999px;background:color-mix(in srgb, var(--card-strong) 95%, transparent);color:var(--muted);display:grid;place-items:center;box-shadow:0 6px 14px rgba(0,0,0,.1);opacity:.92;z-index:3}
+.msg-action-toggle.left{left:0}
+.msg-action-toggle.right{right:0}
+.message-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;max-width:300px}
+.message-actions.hidden{display:none!important}
+.message-actions button{background:color-mix(in srgb, var(--card-strong) 96%, transparent);border:1px solid var(--line);padding:8px 11px}
+.bubble{max-width:100%}
+.bubble-time{font-size:.7rem;padding:0 4px 2px}
+.msg-wrapper.grouped-next .bubble.sent{border-bottom-right-radius:18px}
+.msg-wrapper.grouped-next .bubble.received{border-bottom-left-radius:18px}
+.msg-wrapper.grouped-prev .bubble.sent{border-top-right-radius:18px}
+.msg-wrapper.grouped-prev .bubble.received{border-top-left-radius:18px}
+@media (max-width:980px){
+  .header-drawer{top:66px;padding:8px 10px 0}
+  .header-drawer-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .messages-view{padding:10px 10px 104px}
+  .msg-wrapper{max-width:96%}
+  .msg-wrapper.sent{padding-left:28px}
+  .msg-wrapper.received{padding-right:28px}
+  .chat-input-area{position:sticky!important;bottom:0!important}
+  .telegram-composer{grid-template-columns:42px minmax(0,1fr) 42px 42px}
+}
