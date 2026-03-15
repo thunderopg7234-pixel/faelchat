@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()  # MUST be at the very top
+
 from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
@@ -7,22 +10,30 @@ import os
 
 app = Flask(__name__)
 
-# Render PostgreSQL Support (Defaults to local sqlite if no Render DB is found)
-db_url = os.getenv('DATABASE_URL', 'sqlite:///faelchat.db')
-if db_url.startswith("postgres://"):
+# 1. Improved Database URL Handling
+db_url = os.environ.get('DATABASE_URL')
+
+if not db_url:
+    # Fallback for local development
+    db_url = 'sqlite:///faelchat.db'
+elif db_url.startswith("postgres://"):
+    # Fix for SQLAlchemy 1.4+ / 2.0+
     db_url = db_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SECRET_KEY'] = 'fael_super_secret'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# 2. File Upload Config
 UPLOAD_FOLDER = 'static/uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# 3. Initialization
 db = SQLAlchemy(app)
 socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=1e8)
 
+# 4. Models
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), nullable=False)
