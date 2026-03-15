@@ -1989,3 +1989,259 @@ function bindRecentChatSwipe(){
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.recent-chat-shell')) closeAllRecentSwipes();
 });
+
+
+/* ---- Godly divine merge patch: archive/theme/wallpaper/telegram actions ---- */
+state.roomWallpaper = '';
+
+function openArchivedManager(){
+  const list = byId('archived-list');
+  const archived = (state.recentChats || []).filter((item) => state.archivedChats.has(currentRoomKeyFor(item)));
+  list.innerHTML = archived.length ? archived.map((item) => `
+    <div class="forward-row">
+      <div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.last_msg || item.description || 'Archived chat')}</p></div>
+      <button class="base-btn mini-btn" onclick="void(0)">noop</button>
+    </div>`).join('') : '<div class="empty-mini">No archived chats</div>';
+  // replace noop buttons after render
+  [...list.querySelectorAll('.mini-btn')].forEach((btn, idx) => {
+    btn.textContent = 'Unarchive';
+    btn.onclick = () => {
+      const item = archived[idx];
+      if (!item) return;
+      const key = currentRoomKeyFor(item);
+      state.archivedChats.delete(key);
+      saveSet('fArchivedChats', state.archivedChats);
+      openArchivedManager();
+      renderRecentChats();
+      showToast('Chat unarchived');
+    };
+  });
+  openModal('archived-modal');
+}
+
+function unarchiveAllChats(){
+  if (!state.archivedChats.size) return showToast('No archived chats');
+  state.archivedChats = new Set();
+  saveSet('fArchivedChats', state.archivedChats);
+  renderRecentChats();
+  openArchivedManager();
+  showToast('All chats unarchived');
+}
+
+const __oldRenderThemeCards = renderThemeCards;
+renderThemeCards = function(){
+  __oldRenderThemeCards();
+  const settings = byId('settings-theme-grid');
+  if (settings) settings.innerHTML = '';
+  const a = byId('theme-grad-a'), b = byId('theme-grad-b'), c = byId('theme-accent');
+  const stored = JSON.parse(localStorage.getItem('fCustomTheme') || '{}');
+  if (a) a.value = stored.a || '#101a27';
+  if (b) b.value = stored.b || '#1d8cf8';
+  if (c) c.value = stored.c || '#22d3ee';
+};
+
+function previewCustomTheme(){
+  const a = byId('theme-grad-a')?.value || '#101a27';
+  const b = byId('theme-grad-b')?.value || '#1d8cf8';
+  const c = byId('theme-accent')?.value || '#22d3ee';
+  document.documentElement.style.setProperty('--custom-theme-bg', `linear-gradient(180deg, ${a}, ${b})`);
+  document.documentElement.style.setProperty('--custom-theme-accent', c);
+}
+function saveCustomTheme(){
+  const payload = { a: byId('theme-grad-a')?.value || '#101a27', b: byId('theme-grad-b')?.value || '#1d8cf8', c: byId('theme-accent')?.value || '#22d3ee' };
+  localStorage.setItem('fCustomTheme', JSON.stringify(payload));
+  applyTheme('custom-gradient');
+  previewCustomTheme();
+  showToast('Custom theme saved');
+}
+function resetCustomTheme(){ localStorage.removeItem('fCustomTheme'); applyTheme('midnight-cyan'); showToast('Custom theme reset'); }
+
+Object.assign(THEMES, { 'custom-gradient': { label:'Custom Gradient', color:'#101a27' } });
+const __prevApplyTheme2 = applyTheme;
+applyTheme = function(themeKey, persist = true){
+  __prevApplyTheme2(themeKey, persist);
+  if (themeKey === 'custom-gradient') {
+    const stored = JSON.parse(localStorage.getItem('fCustomTheme') || '{}');
+    document.body.dataset.theme = 'custom-gradient';
+    document.documentElement.style.setProperty('--custom-theme-bg', `linear-gradient(180deg, ${stored.a || '#101a27'}, ${stored.b || '#1d8cf8'})`);
+    document.documentElement.style.setProperty('--custom-theme-accent', stored.c || '#22d3ee');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', stored.a || '#101a27');
+  }
+};
+
+const __prevOpenChat2 = openChat;
+openChat = async function(name, id, pfp, isGroup, meta = {}){
+  await __prevOpenChat2(name, id, pfp, isGroup, meta);
+  state.roomWallpaper = meta.wallpaper || '';
+  if (state.roomWallpaper) applyWallpaperSetting(state.roomWallpaper, false);
+};
+
+const __prevSaveRoomSettings2 = saveRoomSettings;
+saveRoomSettings = async function(){
+  const payload = { code: state.currentTargetID, actor_id: state.myID, public_handle: byId('room-public-handle')?.value.trim(), rules_text: byId('room-rules-text')?.value.trim(), welcome_message: byId('room-welcome-message')?.value.trim(), slow_mode_seconds: byId('room-slow-mode')?.value.trim(), join_approval: byId('room-join-approval')?.value === 'true', is_verified: byId('room-verified')?.value === 'true', wallpaper: byId('room-wallpaper-picker')?.value || '' };
+  const res = await fetch('/update_room_settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not save room settings');
+  state.roomInviteToken = data.room.invite_token || '';
+  state.roomWallpaper = data.room.wallpaper || '';
+  closeModal('room-settings-modal');
+  await openChat(state.currentTargetName, state.currentTargetID, data.room.pfp || state.currentTargetPFP, state.isCurrentChatGroup, data.room);
+  showToast('Room settings saved');
+};
+
+const __prevPrefillRoomSettings = prefillRoomSettings;
+prefillRoomSettings = function(room = {}){
+  __prevPrefillRoomSettings(room);
+  let picker = byId('room-wallpaper-picker');
+  if (!picker) {
+    const anchor = byId('room-verified');
+    if (anchor?.parentElement) {
+      const label = document.createElement('label'); label.className='modal-label'; label.textContent='Shared room wallpaper';
+      picker = document.createElement('select'); picker.id='room-wallpaper-picker'; picker.className='base-input';
+      picker.innerHTML = Object.keys(WALLPAPERS).map(k=>`<option value="${k}">${k.replace(/-/g,' ')}</option>`).join('');
+      anchor.parentElement.insertBefore(label, anchor.nextSibling);
+      anchor.parentElement.insertBefore(picker, label.nextSibling);
+      const pfpBtn = document.createElement('button'); pfpBtn.className='base-btn secondary'; pfpBtn.textContent='Change room photo'; pfpBtn.onclick = () => byId('room-pfp-upload').click();
+      const pfpInput = document.createElement('input'); pfpInput.type='file'; pfpInput.id='room-pfp-upload'; pfpInput.accept='image/*'; pfpInput.className='hidden'; pfpInput.onchange = uploadRoomPfp;
+      anchor.parentElement.appendChild(pfpBtn); anchor.parentElement.appendChild(pfpInput);
+    }
+  }
+  if (picker) picker.value = room.wallpaper || 'aurora';
+};
+
+async function uploadRoomPfp(event){
+  const file = event.target.files?.[0];
+  if (!file || !state.currentTargetID) return;
+  const form = new FormData(); form.append('photo', file); form.append('code', state.currentTargetID); form.append('actor_id', state.myID);
+  const res = await fetch('/upload_room_pfp', { method:'POST', body: form });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Upload failed');
+  state.currentTargetPFP = data.url || '';
+  await openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup, data.room || {});
+  showToast('Room photo updated');
+}
+
+function telegramMessageActions(data, sent){
+  return `
+    <button onclick="prepareReplyById(${data.id})">Reply</button>
+    <button onclick="openReactionPicker(${data.id}, this)">React</button>
+    <button onclick="openForwardModal(${data.id})">Forward</button>
+    <button onclick="saveMessageById(${data.id})">Save</button>
+    ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button class="danger-action" onclick="deleteMyMessage(${data.id})">Delete</button>` : `<button class="danger-action" onclick="deleteMessageFromView(${data.id})">Delete</button>`}
+    ${state.isCurrentChatGroup && ['owner','admin'].includes(state.currentRole) ? `<button onclick="pinMessage(${data.id})">Pin</button>` : ''}`;
+}
+
+function bindLongPressActions(){
+  document.querySelectorAll('.msg-wrapper').forEach((wrap) => {
+    if (wrap.dataset.lpBound === '1') return;
+    wrap.dataset.lpBound = '1';
+    let timer = null;
+    const id = Number(wrap.dataset.msgId);
+    const start = (e) => {
+      if (e.target.closest('.reaction-pill, .message-actions button')) return;
+      timer = setTimeout(() => {
+        state.messageActionOpenId = id;
+        const msgs = Object.values(state.messageCache).sort((a,b)=>new Date(a.timestamp||0)-new Date(b.timestamp||0));
+        renderMessageList(msgs);
+      }, 360);
+    };
+    const stop = () => { if (timer) clearTimeout(timer); timer = null; };
+    wrap.addEventListener('touchstart', start, { passive:true });
+    wrap.addEventListener('touchend', stop); wrap.addEventListener('touchcancel', stop);
+    wrap.addEventListener('mousedown', start); wrap.addEventListener('mouseup', stop); wrap.addEventListener('mouseleave', stop);
+    wrap.addEventListener('contextmenu', (e) => { e.preventDefault(); state.messageActionOpenId = id; const msgs = Object.values(state.messageCache).sort((a,b)=>new Date(a.timestamp||0)-new Date(b.timestamp||0)); renderMessageList(msgs); });
+  });
+}
+
+const __prevRenderMessageList2 = renderMessageList;
+renderMessageList = function(msgs){ __prevRenderMessageList2(msgs); bindLongPressActions(); };
+
+godlyMessageHtml = function(data, index = 0, arr = [data]) {
+  state.messageCache[data.id] = data;
+  const sent = data.sender_id === state.myID;
+  const prev = arr[index - 1];
+  const next = arr[index + 1];
+  const samePrev = shouldGroupWith(prev, data);
+  const sameNext = shouldGroupWith(data, next);
+  const showAvatar = !sent && !samePrev;
+  const showSender = !sent && state.isCurrentChatGroup && !samePrev;
+  const showTime = !sameNext;
+  const menuOpen = state.messageActionOpenId === data.id;
+  return `
+    <div class="msg-wrapper ${sent ? 'sent' : 'received'} ${samePrev ? 'grouped-prev' : ''} ${sameNext ? 'grouped-next' : ''}" data-msg-id="${data.id}">
+      ${showAvatar ? `<div class="avatar mini" style="background-image:${data.sender_pfp ? `url(${data.sender_pfp})` : 'none'}">${data.sender_pfp ? '' : escapeHtml(getInitial(data.sender_name))}</div>` : `<div class="avatar-spacer ${sent ? 'hidden-spacer' : ''}"></div>`}
+      <div class="msg-stack">
+        ${showSender ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
+        ${messageBodyHtml(data)}
+        ${showTime ? `<div class="bubble-time">${formatTime(data.timestamp)} ${data.edited_at ? '· edited' : ''} ${deliveryLabel(data)}</div>` : ''}
+        <div class="message-actions ${menuOpen ? '' : 'hidden'}" id="msg-actions-${data.id}">${telegramMessageActions(data, sent)}</div>
+        <div class="reaction-row">${(data.reactions || []).map((r) => `<button class="reaction-pill" onclick="toggleReaction(${data.id}, '${r.emoji}')">${r.emoji} <span>${r.count}</span></button>`).join('')}</div>
+      </div>
+    </div>`;
+};
+
+renderChatPanel = function(name, pfp, isGroup) {
+  const panel = byId('chat-panel');
+  panel.className = 'chat-panel glass-card';
+  panel.innerHTML = `
+    <div class="chat-shell telegram-room-shell">
+      <div class="chat-header telegram-room-header">
+        <div class="chat-header-left clickable" onclick="openProfileSheet()">
+          <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
+          <div id="chat-header-avatar" class="avatar"></div>
+          <div class="chat-header-meta">
+            <strong id="chat-header-name"></strong>
+            <p id="chat-status-text">Loading…</p>
+          </div>
+        </div>
+        <div class="header-actions compact-actions">
+          <button class="icon-btn" onclick="toggleHeaderDrawer(event)">⋯</button>
+        </div>
+      </div>
+      <div id="header-drawer" class="header-drawer hidden">
+        <div class="header-drawer-inner glass-card">
+          <div class="header-drawer-top"><strong>Chat options</strong><button class="icon-btn" onclick="toggleHeaderDrawer(event, true)">✕</button></div>
+          <div class="header-drawer-grid">
+            <button class="telegram-row compact" onclick="openMediaGallery()">Media</button>
+            <button class="telegram-row compact" onclick="toggleArchiveCurrentChat()">Archive</button>
+            <button class="telegram-row compact" onclick="toggleMuteCurrentChat()">Mute</button>
+            <button class="telegram-row compact" onclick="copyInviteLink()">Invite</button>
+            <button class="telegram-row compact" onclick="openProfileSheet()">Profile</button>
+          </div>
+          <div class="header-search-row"><input id="chat-search-input" class="chat-search-input" placeholder="Search in this chat" oninput="filterMessagesInView()"></div>
+        </div>
+      </div>
+      <div id="pin-banner" class="pin-banner hidden"></div>
+      <div id="reply-preview" class="reply-preview hidden"></div>
+      <div id="messages-view" class="messages-view"></div>
+      <div class="chat-input-area telegram-composer">
+        <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
+        <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
+        <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
+        <button class="attach-btn slim-icon" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">◉</button>
+        <button class="send-btn" onclick="sendMsg()">➤</button>
+      </div>
+    </div>`;
+  byId('chat-header-name').innerHTML = displayNameWithEmoji(name, state.currentTargetPremiumEmoji || '');
+  setAvatar(byId('chat-header-avatar'), name, pfp, state.currentTargetColor || '');
+};
+
+// tighter search matching and cap 3 suggestions
+const __prevDoSearch2 = doSearch;
+doSearch = async function(){
+  const q = byId('search-input')?.value.trim();
+  const suggestions = byId('suggestions');
+  if (!q) { suggestions.innerHTML=''; suggestions.classList.remove('show'); return; }
+  const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
+  let rows = await res.json();
+  const norm = q.toLowerCase();
+  rows = (rows || []).filter((item) => {
+    const fields = [item.name, item.id, item.public_handle, item.description].filter(Boolean).map(v => String(v).toLowerCase());
+    return fields.some(v => v.startsWith(norm) || v.includes(` ${norm}`));
+  }).slice(0,3);
+  suggestions.classList.add('show');
+  suggestions.innerHTML = rows.length ? rows.map((item)=>{
+    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online':'offline')) : (item.type === 'channel' ? 'Channel' : 'Group');
+    return `<button type="button" class="suggestion-row" data-item="${encodeURIComponent(JSON.stringify(item))}"><div class="avatar-row-wrap"><div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div></div><div class="chat-meta"><strong>${item.type === 'user' ? displayNameWithEmoji(item.name, item.premium_emoji || '') : escapeHtml(item.name)}</strong><p>@${escapeHtml(item.id || '')}</p><small class="muted">${escapeHtml(label)}</small></div></button>`;
+  }).join('') : '<div class="empty-mini">No suggestions</div>';
+};

@@ -119,22 +119,8 @@
                     <button class="telegram-row" onclick="openModal('privacy-modal')"><span class="row-icon pink">🔒</span><span>Privacy & Lock</span></button>
                     <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
                     <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
-                    <button class="telegram-row" onclick="setListFilter('archived', document.querySelector('.chip[data-filter=\'archived\']'))"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
+                    <button class="telegram-row" onclick="openArchivedManager()"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
                     <button class="telegram-row" onclick="deleteCurrentAccount()"><span class="row-icon pink">⊘</span><span>Delete account</span></button><button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log out</span></button>
-                </div>
-
-                <div class="telegram-card account-card">
-                    <div class="account-row">
-                        <div class="account-left">
-                            <div id="settings-mini-avatar" class="avatar"></div>
-                            <div>
-                                <strong id="settings-fullname-2">Display Name</strong>
-                                <p id="settings-id-2">@username</p>
-                            </div>
-                        </div>
-                        <span class="badge-pill">You</span>
-                    </div>
-                    <div class="theme-grid" id="settings-theme-grid"></div>
                 </div>
             </aside>
         </main>
@@ -185,8 +171,16 @@
             <div class="modal-top"><h3>Theme Studio</h3><button class="icon-btn" onclick="closeModal('theme-modal')">✕</button></div>
             <div class="theme-grid" id="theme-grid"></div>
             <div class="divider-space"></div>
+            <label class="modal-label">Custom gradient top</label><input id="theme-grad-a" class="base-input" type="color" value="#101a27" onchange="previewCustomTheme()">
+            <label class="modal-label">Custom gradient bottom</label><input id="theme-grad-b" class="base-input" type="color" value="#1d8cf8" onchange="previewCustomTheme()">
+            <label class="modal-label">Accent</label><input id="theme-accent" class="base-input" type="color" value="#22d3ee" onchange="previewCustomTheme()">
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="saveCustomTheme()">Save Custom Theme</button>
+                <button class="base-btn" onclick="resetCustomTheme()">Reset</button>
+            </div>
+            <div class="divider-space"></div>
             <label class="modal-label">Wallpaper</label><select id="wallpaper-picker" class="base-input" onchange="applyWallpaperSetting(this.value)"></select>
-            <label class="modal-label">Bubble style</label><select id="bubble-style-picker" class="base-input" onchange="applyBubbleStyle(this.value)"><option value="default">Default</option><option value="telegram">Telegram</option><option value="rounded">Rounded Luxe</option><option value="compact">Compact</option></select>
+            <label class="modal-label">Bubble style</label><select id="bubble-style-picker" class="base-input" onchange="applyBubbleStyle(this.value)"><option value="telegram">Telegram Soft</option><option value="default">Classic</option><option value="rounded">Rounded Luxe</option><option value="compact">Compact</option></select>
             <div class="modal-actions two">
                 <button class="base-btn secondary" onclick="toggleCompactMode()">Toggle compact</button>
                 <button class="base-btn" onclick="toggleAmoledMode()">Toggle AMOLED</button>
@@ -360,5 +354,7 @@
     <div id="toast" class="toast hidden"></div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+    <div id="archived-modal" class="modal hidden"><div class="modal-card glass-card"><div class="modal-top"><h3>Archived chats</h3><button class="icon-btn" onclick="closeModal('archived-modal')">✕</button></div><div id="archived-list" class="forward-list"></div><div class="modal-actions two"><button class="base-btn secondary" onclick="setListFilter('archived', document.querySelector('.chip[data-filter=\'archived\']'))">Open archived list</button><button class="base-btn" onclick="unarchiveAllChats()">Unarchive all</button></div></div></div>
 </body>
 </html>

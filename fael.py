@@ -113,6 +113,7 @@ class Group(db.Model):
     welcome_message = db.Column(db.String(200), default='')
     slow_mode_seconds = db.Column(db.Integer, default=0)
     is_verified = db.Column(db.Boolean, default=False)
+    wallpaper = db.Column(db.String(255), default='')
 
 
 class GroupMember(db.Model):
@@ -175,6 +176,7 @@ def ensure_schema():
     add_column_if_missing('user', 'birthday', "VARCHAR(20) DEFAULT ''")
     add_column_if_missing('user', 'profile_color', "VARCHAR(32) DEFAULT ''")
     add_column_if_missing('user', 'premium_emoji', "VARCHAR(16) DEFAULT ''")
+    add_column_if_missing('group', 'wallpaper', "VARCHAR(255) DEFAULT ''")
     add_column_if_missing('message', 'edited_at', 'TIMESTAMP')
     add_column_if_missing('message', 'reply_to_id', 'INTEGER')
     add_column_if_missing('message', 'reactions', "TEXT DEFAULT ''")
@@ -423,6 +425,7 @@ def room_meta_for_code(code: str):
         'welcome_message': room.welcome_message or '',
         'slow_mode_seconds': room.slow_mode_seconds or 0,
         'is_verified': bool(room.is_verified),
+        'wallpaper': room.wallpaper or '',
     }
 
 
@@ -903,6 +906,7 @@ def update_room_settings():
     except Exception:
         room.slow_mode_seconds = 0
     room.is_verified = bool(data.get('is_verified')) if member.role == 'owner' else bool(room.is_verified)
+    room.wallpaper = (data.get('wallpaper') or room.wallpaper or '')[:255]
     db.session.commit()
     add_admin_log(code, actor_id, 'updated room settings')
     return jsonify({'status':'success','room': room_meta_for_code(code)})
@@ -971,6 +975,24 @@ def delete_chat_route():
     Message.query.filter_by(room=room).delete()
     db.session.commit()
     return jsonify({'status':'success'})
+
+
+@app.route('/upload_room_pfp', methods=['POST'])
+def upload_room_pfp():
+    file = request.files.get('photo')
+    code = normalize_handle(request.form.get('code') or '')
+    actor_id = normalize_handle(request.form.get('actor_id') or '')
+    room = Group.query.filter_by(code=code).first()
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    if not room or not member or member.role not in {'owner','admin'}:
+        return json_error('Not allowed', 403)
+    if not file:
+        return json_error('No file selected')
+    url, _kind = save_uploaded_asset(file, 'image')
+    room.pfp = url
+    db.session.commit()
+    add_admin_log(code, actor_id, 'updated room photo')
+    return jsonify({'status':'success','url': url, 'room': room_meta_for_code(code)})
 
 
 @app.route('/delete_room', methods=['POST'])

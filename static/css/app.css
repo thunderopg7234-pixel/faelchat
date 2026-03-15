@@ -502,3 +502,72 @@ body, .app-shell, .main-app, .chat-panel, .chat-shell, .messages-view {
     border-radius:17px !important;
   }
 }
+
+
+/* ---- Composer width hard fix ---- */
+#schedule-send-btn{display:none !important}
+.telegram-composer,
+.chat-input-area.telegram-composer,
+.chat-input-area{
+  display:flex !important;
+  align-items:center !important;
+  gap:10px !important;
+  flex-wrap:nowrap !important;
+}
+.chat-input-area > input[type="file"],
+.telegram-composer > input[type="file"]{display:none !important}
+.chat-input-area input[type="text"],
+.telegram-composer input[type="text"],
+#msg-input{
+  flex:1 1 auto !important;
+  width:auto !important;
+  min-width:0 !important;
+  max-width:none !important;
+  min-height:52px !important;
+  height:52px !important;
+  padding:0 18px !important;
+  border-radius:24px !important;
+  background:rgba(255,255,255,.98) !important;
+  border:1px solid rgba(15,23,42,.08) !important;
+}
+.attach-btn,.send-btn{
+  flex:0 0 auto !important;
+}
+@media (max-width:980px){
+  .telegram-composer,
+  .chat-input-area.telegram-composer,
+  .chat-input-area{gap:8px !important;padding:10px 12px calc(10px + max(env(safe-area-inset-bottom), 4px)) !important}
+  .chat-input-area input[type="text"],
+  .telegram-composer input[type="text"],
+  #msg-input{min-height:50px !important;height:50px !important;font-size:16px !important}
+}
+
+
+/* ---- divine compact telegram patch ---- */
+:root{--custom-theme-bg:linear-gradient(180deg,#101a27,#1d8cf8);--custom-theme-accent:#22d3ee}
+body[data-theme='custom-gradient']{--bg:var(--custom-theme-bg);--accent:var(--custom-theme-accent);--pink:var(--custom-theme-accent)}
+body[data-theme='custom-gradient'] .app-shell{background:var(--custom-theme-bg)}
+.settings-panel .telegram-card,.sidebar .chat-list .recent-chat-shell .chat-row{backdrop-filter:blur(18px)}
+.settings-panel .telegram-card{border-radius:22px;overflow:hidden}
+.telegram-row{padding:11px 10px;font-size:.95rem}
+.row-icon{width:34px;height:34px;border-radius:12px}
+.chat-list{gap:5px !important}
+.recent-chat-shell{border-radius:15px}
+.recent-chat-shell .chat-row{border-radius:15px !important}
+.chat-row.compact-row-card{padding:9px 11px !important;background:rgba(255,255,255,.97) !important;border:1px solid rgba(255,255,255,.88) !important;box-shadow:0 3px 12px rgba(15,23,42,.04)}
+.chat-row.compact-row-card .avatar{width:48px;height:48px;border-radius:15px;flex-basis:48px}
+.compact-chat-meta{gap:2px}.chat-preview-line{font-size:.92rem}.compact-row-between small,.compact-chat-meta .muted{font-size:.75rem}
+.recent-chat-shell .recent-delete-action{width:58px;height:34px;right:8px;border-radius:11px;font-size:.76rem;opacity:0;pointer-events:none;transform:translateY(-50%) scale(.94)}
+.recent-chat-shell.open .recent-delete-action{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}
+.chat-row.compact-row-card.active{background:rgba(245,251,255,.99)!important}
+body[data-bubble-style='telegram'] .bubble.received{background:rgba(255,255,255,.96);border:1px solid rgba(255,255,255,.85);box-shadow:0 8px 24px rgba(15,23,42,.06);border-radius:20px 20px 20px 9px}
+body[data-bubble-style='telegram'] .bubble.sent{background:linear-gradient(180deg,color-mix(in srgb, var(--accent) 16%, white),color-mix(in srgb, var(--accent) 8%, white));border:1px solid color-mix(in srgb, var(--accent) 24%, white);box-shadow:0 8px 24px rgba(15,23,42,.05);border-radius:20px 20px 9px 20px}
+.msg-wrapper{gap:8px;margin-bottom:2px;position:relative}.msg-stack{gap:2px}.bubble{padding:10px 13px}.bubble-time{margin-top:1px;padding-left:6px;color:var(--muted)}
+.msg-wrapper.grouped-prev{margin-top:-1px}.msg-wrapper.grouped-next{margin-bottom:0}
+.msg-action-toggle{display:none !important}
+.message-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;max-width:320px;background:rgba(255,255,255,.94);padding:6px;border-radius:16px;border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 28px rgba(15,23,42,.10)}
+.message-actions button{padding:7px 10px;border-radius:11px;font-size:.82rem}
+.telegram-composer,.chat-input-area.telegram-composer,.chat-input-area{background:rgba(250,252,255,.88)!important;border-top:1px solid rgba(255,255,255,.7)}
+.chat-input-area input[type='text'],.telegram-composer input[type='text'],#msg-input{min-height:48px!important;height:48px!important;border-radius:24px!important;background:#fff!important;border:1px solid rgba(148,163,184,.22)!important;box-shadow:0 2px 10px rgba(15,23,42,.04)}
+.header-drawer-grid .telegram-row.compact{font-size:.85rem;padding:10px 8px}
+@media (max-width:980px){.telegram-row{padding:10px 9px;font-size:.92rem}.chat-row.compact-row-card{padding:8px 10px!important}.recent-chat-shell .recent-delete-action{width:54px;height:32px;font-size:.72rem}.chat-row.compact-row-card .avatar{width:44px;height:44px;flex-basis:44px}.chat-input-area input[type='text'],.telegram-composer input[type='text'],#msg-input{min-height:46px!important;height:46px!important}}
