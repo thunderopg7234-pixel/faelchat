@@ -65,6 +65,11 @@ class User(db.Model):
     privacy_last_seen = db.Column(db.String(20), default='everyone')
     blocked_users = db.Column(db.Text, default='')
     last_seen_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    status_text = db.Column(db.String(120), default='')
+    banner_url = db.Column(db.String(255), default='')
+    profile_music = db.Column(db.String(120), default='')
+    mood = db.Column(db.String(60), default='')
+    birthday = db.Column(db.String(20), default='')
 
 
 class Message(db.Model):
@@ -83,6 +88,8 @@ class Message(db.Model):
     delivered_to = db.Column(db.Text, default='')
     seen_by = db.Column(db.Text, default='')
     forwarded_from = db.Column(db.String(120), default='')
+    expires_at = db.Column(db.DateTime, nullable=True)
+    edit_history = db.Column(db.Text, default='')
     timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
@@ -98,6 +105,12 @@ class Group(db.Model):
     invite_token = db.Column(db.String(64), default='')
     owner_id = db.Column(db.String(50), default='')
     pin_message_id = db.Column(db.Integer, nullable=True)
+    join_approval = db.Column(db.Boolean, default=False)
+    public_handle = db.Column(db.String(60), default='')
+    rules_text = db.Column(db.Text, default='')
+    welcome_message = db.Column(db.String(200), default='')
+    slow_mode_seconds = db.Column(db.Integer, default=0)
+    is_verified = db.Column(db.Boolean, default=False)
 
 
 class GroupMember(db.Model):
@@ -106,6 +119,23 @@ class GroupMember(db.Model):
     group_code = db.Column(db.String(50), nullable=False, index=True)
     tele_id = db.Column(db.String(50), nullable=False, index=True)
     role = db.Column(db.String(20), default='member')
+
+
+class JoinRequest(db.Model):
+    __tablename__ = 'join_request'
+    id = db.Column(db.Integer, primary_key=True)
+    group_code = db.Column(db.String(50), nullable=False, index=True)
+    tele_id = db.Column(db.String(50), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+class AdminLog(db.Model):
+    __tablename__ = 'admin_log'
+    id = db.Column(db.Integer, primary_key=True)
+    group_code = db.Column(db.String(50), nullable=False, index=True)
+    actor_id = db.Column(db.String(50), default='')
+    action = db.Column(db.String(120), default='')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
 def ensure_schema():
@@ -126,18 +156,31 @@ def ensure_schema():
     add_column_if_missing('user', 'privacy_last_seen', "VARCHAR(20) DEFAULT 'everyone'")
     add_column_if_missing('user', 'blocked_users', "TEXT DEFAULT ''")
     add_column_if_missing('user', 'last_seen_at', "TIMESTAMP")
+    add_column_if_missing('user', 'status_text', "VARCHAR(120) DEFAULT ''")
+    add_column_if_missing('user', 'banner_url', "VARCHAR(255) DEFAULT ''")
+    add_column_if_missing('user', 'profile_music', "VARCHAR(120) DEFAULT ''")
+    add_column_if_missing('user', 'mood', "VARCHAR(60) DEFAULT ''")
+    add_column_if_missing('user', 'birthday', "VARCHAR(20) DEFAULT ''")
     add_column_if_missing('message', 'edited_at', 'TIMESTAMP')
     add_column_if_missing('message', 'reply_to_id', 'INTEGER')
     add_column_if_missing('message', 'reactions', "TEXT DEFAULT ''")
     add_column_if_missing('message', 'delivered_to', "TEXT DEFAULT ''")
     add_column_if_missing('message', 'seen_by', "TEXT DEFAULT ''")
     add_column_if_missing('message', 'forwarded_from', "VARCHAR(120) DEFAULT ''")
+    add_column_if_missing('message', 'expires_at', 'TIMESTAMP')
+    add_column_if_missing('message', 'edit_history', "TEXT DEFAULT ''")
     add_column_if_missing('group', 'description', "VARCHAR(280) DEFAULT ''")
     add_column_if_missing('group', 'kind', "VARCHAR(20) DEFAULT 'group'")
     add_column_if_missing('group', 'visibility', "VARCHAR(20) DEFAULT 'public'")
     add_column_if_missing('group', 'invite_token', "VARCHAR(64) DEFAULT ''")
     add_column_if_missing('group', 'owner_id', "VARCHAR(50) DEFAULT ''")
     add_column_if_missing('group', 'pin_message_id', 'INTEGER')
+    add_column_if_missing('group', 'join_approval', 'BOOLEAN DEFAULT FALSE')
+    add_column_if_missing('group', 'public_handle', "VARCHAR(60) DEFAULT ''")
+    add_column_if_missing('group', 'rules_text', "TEXT DEFAULT ''")
+    add_column_if_missing('group', 'welcome_message', "VARCHAR(200) DEFAULT ''")
+    add_column_if_missing('group', 'slow_mode_seconds', 'INTEGER DEFAULT 0')
+    add_column_if_missing('group', 'is_verified', 'BOOLEAN DEFAULT FALSE')
     add_column_if_missing('group_member', 'role', "VARCHAR(20) DEFAULT 'member'")
 
     with engine.begin() as conn:
@@ -152,6 +195,10 @@ def ensure_schema():
         conn.execute(text("UPDATE \"message\" SET delivered_to = '' WHERE delivered_to IS NULL"))
         conn.execute(text("UPDATE \"message\" SET seen_by = '' WHERE seen_by IS NULL"))
         conn.execute(text("UPDATE \"message\" SET forwarded_from = '' WHERE forwarded_from IS NULL"))
+        conn.execute(text("UPDATE \"message\" SET edit_history = '' WHERE edit_history IS NULL"))
+        conn.execute(text("UPDATE \"group\" SET public_handle = '' WHERE public_handle IS NULL"))
+        conn.execute(text("UPDATE \"group\" SET rules_text = '' WHERE rules_text IS NULL"))
+        conn.execute(text("UPDATE \"group\" SET welcome_message = '' WHERE welcome_message IS NULL"))
 
 
 with app.app_context():
@@ -284,6 +331,13 @@ def is_blocked(sender_id: str, receiver_id: str) -> bool:
         return False
     return normalize_handle(sender_id) in parse_blocked(receiver.blocked_users)
 
+def add_admin_log(group_code: str, actor_id: str, action: str):
+    try:
+        db.session.add(AdminLog(group_code=group_code, actor_id=actor_id or '', action=action[:120]))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
 def can_post(actor_id: str, target_code: str, is_group: bool) -> bool:
     if not is_group:
         return True
@@ -323,11 +377,12 @@ def message_payload(msg: Message) -> dict:
         'delivered_to': parse_simple_list(msg.delivered_to),
         'seen_by': parse_simple_list(msg.seen_by),
         'forwarded_from': msg.forwarded_from or '',
+        'expires_at': msg.expires_at.isoformat() if msg.expires_at else None,
+        'edit_history': [x for x in (msg.edit_history or '').split('\n---\n') if x][-10:],
     }
 
 
 def room_meta_for_code(code: str):
-    token = (data.get('invite_token') or '').strip()
     room = Group.query.filter_by(code=code).first()
     if not room:
         return None
@@ -344,6 +399,12 @@ def room_meta_for_code(code: str):
         'owner_id': room.owner_id or '',
         'member_count': member_count,
         'pin_message': message_payload(pin) if pin else None,
+        'join_approval': bool(room.join_approval),
+        'public_handle': room.public_handle or room.code,
+        'rules_text': room.rules_text or '',
+        'welcome_message': room.welcome_message or '',
+        'slow_mode_seconds': room.slow_mode_seconds or 0,
+        'is_verified': bool(room.is_verified),
     }
 
 
@@ -366,7 +427,7 @@ def signup():
     user = User(username=username, tele_id=tele_id, password=password, last_seen_at=datetime.utcnow())
     db.session.add(user)
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone'})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or ''})
 
 
 @app.route('/login', methods=['POST'])
@@ -384,6 +445,11 @@ def login():
         'pfp': user.pfp or '',
         'bio': user.bio or '',
         'theme': user.theme or 'midnight-cyan',
+        'status_text': user.status_text or '',
+        'banner_url': user.banner_url or '',
+        'profile_music': user.profile_music or '',
+        'mood': user.mood or '',
+        'birthday': user.birthday or '',
     })
 
 
@@ -427,6 +493,12 @@ def create_room():
     kind = (data.get('kind') or 'group').strip().lower()
     description = (data.get('description') or '').strip()[:280]
     visibility = (data.get('visibility') or 'public').strip().lower()
+    join_approval = bool(data.get('join_approval'))
+    public_handle = normalize_handle(data.get('public_handle') or code)[:60]
+    rules_text = (data.get('rules_text') or '').strip()[:3000]
+    welcome_message = (data.get('welcome_message') or '').strip()[:200]
+    slow_mode_seconds = int(data.get('slow_mode_seconds') or 0) if str(data.get('slow_mode_seconds') or '0').isdigit() else 0
+    is_verified = bool(data.get('is_verified'))
     if kind not in {'group', 'channel'}:
         kind = 'group'
     if not name or not code or not creator_id:
@@ -436,10 +508,11 @@ def create_room():
     if visibility not in {'public','private'}:
         visibility = 'public'
     invite_token = uuid.uuid4().hex[:10] if visibility == 'private' else ''
-    room = Group(name=name, code=code, kind=kind, description=description, visibility=visibility, invite_token=invite_token, owner_id=creator_id)
+    room = Group(name=name, code=code, kind=kind, description=description, visibility=visibility, invite_token=invite_token, owner_id=creator_id, join_approval=join_approval, public_handle=public_handle, rules_text=rules_text, welcome_message=welcome_message, slow_mode_seconds=min(max(slow_mode_seconds,0),3600), is_verified=is_verified)
     db.session.add(room)
     db.session.add(GroupMember(group_code=code, tele_id=creator_id, role='owner'))
     db.session.commit()
+    add_admin_log(code, creator_id, f'created {kind}')
     return jsonify({'status': 'success', 'room': room_meta_for_code(code)})
 
 
@@ -457,9 +530,21 @@ def join_room_route():
         if not member:
             return json_error('Invite token required')
     member = GroupMember.query.filter_by(group_code=code, tele_id=tele_id).first()
+    if room.join_approval and not member and tele_id != room.owner_id:
+        existing = JoinRequest.query.filter_by(group_code=code, tele_id=tele_id).first()
+        if not existing:
+            db.session.add(JoinRequest(group_code=code, tele_id=tele_id))
+            db.session.commit()
+            add_admin_log(code, tele_id, 'requested to join')
+        return jsonify({'status': 'pending', 'message': 'Join request sent', 'room': room_meta_for_code(code)})
     if not member:
         db.session.add(GroupMember(group_code=code, tele_id=tele_id, role='member'))
         db.session.commit()
+        add_admin_log(code, tele_id, 'joined room')
+        if room.welcome_message:
+            welcome = Message(room=f'group_{room.code}', sender_id=room.owner_id or 'system', sender_name=room.name, content=room.welcome_message, msg_type='system')
+            db.session.add(welcome)
+            db.session.commit()
     return jsonify({'status': 'success', 'room': room_meta_for_code(code)})
 
 
@@ -541,7 +626,7 @@ def profile(tele_id):
     user = User.query.filter_by(tele_id=normalize_handle(tele_id)).first()
     if not user:
         return json_error('User not found', 404)
-    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'privacy_last_seen': user.privacy_last_seen or 'everyone', **format_user_status(user, viewer_id)}
+    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or '', **format_user_status(user, viewer_id)}
     return jsonify(payload)
 
 
@@ -561,6 +646,11 @@ def update_profile():
     bio = (data.get('bio') or '').strip()[:280]
     theme = (data.get('theme') or '').strip()
     privacy_last_seen = (data.get('privacy_last_seen') or '').strip()
+    status_text = (data.get('status_text') or '').strip()[:120]
+    banner_url = (data.get('banner_url') or '').strip()[:255]
+    profile_music = (data.get('profile_music') or '').strip()[:120]
+    mood = (data.get('mood') or '').strip()[:60]
+    birthday = (data.get('birthday') or '').strip()[:20]
     if not tele_id or not username:
         return json_error('Fill all fields')
     user = User.query.filter_by(tele_id=tele_id).first()
@@ -572,8 +662,13 @@ def update_profile():
         user.theme = theme
     if privacy_last_seen in {'everyone','nobody'}:
         user.privacy_last_seen = privacy_last_seen
+    user.status_text = status_text
+    user.banner_url = banner_url
+    user.profile_music = profile_music
+    user.mood = mood
+    user.birthday = birthday
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone'})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or ''})
 
 
 @app.route('/upload', methods=['POST'])
@@ -657,6 +752,76 @@ def room_member_role():
     db.session.commit()
     return jsonify({'status':'success'})
 
+
+
+
+@app.route('/update_room_settings', methods=['POST'])
+def update_room_settings():
+    data = request.json or {}
+    code = normalize_handle(data.get('code') or '')
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    room = Group.query.filter_by(code=code).first()
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    if not room or not member or member.role not in {'owner','admin'}:
+        return json_error('Not allowed', 403)
+    room.join_approval = bool(data.get('join_approval'))
+    room.public_handle = normalize_handle(data.get('public_handle') or room.public_handle or room.code)[:60]
+    room.rules_text = (data.get('rules_text') or room.rules_text or '')[:3000]
+    room.welcome_message = (data.get('welcome_message') or room.welcome_message or '')[:200]
+    try:
+        room.slow_mode_seconds = min(max(int(data.get('slow_mode_seconds') or 0), 0), 3600)
+    except Exception:
+        room.slow_mode_seconds = 0
+    room.is_verified = bool(data.get('is_verified')) if member.role == 'owner' else bool(room.is_verified)
+    db.session.commit()
+    add_admin_log(code, actor_id, 'updated room settings')
+    return jsonify({'status':'success','room': room_meta_for_code(code)})
+
+
+@app.route('/room_join_requests/<code>')
+def room_join_requests(code):
+    code = normalize_handle(code)
+    actor_id = normalize_handle(request.args.get('actor_id') or '')
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    if not member or member.role not in {'owner','admin'}:
+        return json_error('Not allowed', 403)
+    requests = JoinRequest.query.filter_by(group_code=code).order_by(JoinRequest.created_at.asc()).all()
+    result = []
+    for req in requests:
+        user = User.query.filter_by(tele_id=req.tele_id).first()
+        if user:
+            result.append({'tele_id': user.tele_id, 'username': user.username, 'pfp': user.pfp or '', 'created_at': req.created_at.isoformat()})
+    return jsonify({'status':'success','requests': result})
+
+
+@app.route('/approve_join_request', methods=['POST'])
+def approve_join_request():
+    data = request.json or {}
+    code = normalize_handle(data.get('code') or '')
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    target_id = normalize_handle(data.get('target_id') or '')
+    approve = bool(data.get('approve', True))
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    req = JoinRequest.query.filter_by(group_code=code, tele_id=target_id).first()
+    if not member or member.role not in {'owner','admin'} or not req:
+        return json_error('Not allowed', 403)
+    if approve and not GroupMember.query.filter_by(group_code=code, tele_id=target_id).first():
+        db.session.add(GroupMember(group_code=code, tele_id=target_id, role='member'))
+    db.session.delete(req)
+    db.session.commit()
+    add_admin_log(code, actor_id, f"{'approved' if approve else 'declined'} join request for {target_id}")
+    return jsonify({'status':'success'})
+
+
+@app.route('/admin_logs/<code>')
+def admin_logs(code):
+    code = normalize_handle(code)
+    actor_id = normalize_handle(request.args.get('actor_id') or '')
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    if not member or member.role not in {'owner','admin'}:
+        return json_error('Not allowed', 403)
+    logs = AdminLog.query.filter_by(group_code=code).order_by(AdminLog.created_at.desc()).limit(100).all()
+    return jsonify({'status':'success','logs':[{'actor_id': log.actor_id, 'action': log.action, 'created_at': log.created_at.isoformat()} for log in logs]})
 
 @app.route('/block_user', methods=['POST'])
 def block_user():
@@ -777,6 +942,7 @@ def handle_private_message(data):
     is_group = bool((data or {}).get('is_group'))
     reply_to_id = (data or {}).get('reply_to_id')
     forwarded_from = ((data or {}).get('forwarded_from') or '')[:120]
+    self_destruct_seconds = int((data or {}).get('self_destruct_seconds') or 0) if str((data or {}).get('self_destruct_seconds') or '0').isdigit() else 0
 
     if not room or not sender_id or not sender_name:
         return
@@ -788,14 +954,27 @@ def handle_private_message(data):
     if not can_post(sender_id, target_id, is_group):
         emit('flash_error', {'message': 'Only channel admins can post there.'}, room=request.sid)
         return
+    if is_group:
+        room_cfg = Group.query.filter_by(code=target_id).first()
+        if room_cfg and (room_cfg.slow_mode_seconds or 0) > 0:
+            last_msg = Message.query.filter_by(room=room, sender_id=sender_id).order_by(Message.timestamp.desc()).first()
+            if last_msg and (datetime.utcnow() - last_msg.timestamp).total_seconds() < room_cfg.slow_mode_seconds:
+                emit('flash_error', {'message': f'Slow mode active. Wait {room_cfg.slow_mode_seconds}s between messages.'}, room=request.sid)
+                return
 
     delivered_to = append_simple_list('', sender_id)
     seen_by = append_simple_list('', sender_id)
     if not is_group and target_id in ONLINE_USERS:
         delivered_to = append_simple_list(delivered_to, target_id)
-    msg = Message(room=room, sender_id=sender_id, sender_name=sender_name, content=content, msg_type=msg_type, file_url=file_url, reply_to_id=reply_to_id, forwarded_from=forwarded_from, delivered_to=delivered_to, seen_by=seen_by)
+    expires_at = datetime.utcnow() if self_destruct_seconds > 0 else None
+    if self_destruct_seconds > 0:
+        from datetime import timedelta
+        expires_at = datetime.utcnow() + timedelta(seconds=min(self_destruct_seconds, 86400))
+    msg = Message(room=room, sender_id=sender_id, sender_name=sender_name, content=content, msg_type=msg_type, file_url=file_url, reply_to_id=reply_to_id, forwarded_from=forwarded_from, delivered_to=delivered_to, seen_by=seen_by, expires_at=expires_at)
     db.session.add(msg)
     db.session.commit()
+    if is_group:
+        add_admin_log(target_id, sender_id, f'sent {msg_type} message')
 
     payload = message_payload(msg)
     payload.update({'target_id': target_id, 'is_group': is_group})
@@ -836,6 +1015,7 @@ def edit_message(data):
     msg = Message.query.get(msg_id)
     if not msg or msg.sender_id != sender_id or msg.is_deleted or not content:
         return
+    msg.edit_history = ((msg.edit_history + '\n---\n') if msg.edit_history else '') + (msg.content or '')
     msg.content = content[:4000]
     msg.edited_at = datetime.utcnow()
     db.session.commit()
@@ -877,6 +1057,7 @@ def pin_message(data):
         return
     room.pin_message_id = msg_id
     db.session.commit()
+    add_admin_log(code, actor_id, f'pinned message {msg_id}')
     emit('room_meta_updated', {'target_id': code, 'room': room_meta_for_code(code)}, room=f'group_{code}')
 
 

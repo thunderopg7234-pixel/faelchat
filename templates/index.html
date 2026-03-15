@@ -162,6 +162,11 @@
             <div class="modal-top"><h3>Edit profile</h3><button class="icon-btn" onclick="closeModal('profile-modal')">✕</button></div>
             <input id="edit-display-name" class="base-input" placeholder="Display name">
             <textarea id="edit-bio" class="base-input textarea" placeholder="Bio"></textarea>
+            <input id="edit-status-text" class="base-input" placeholder="Status text">
+            <input id="edit-profile-music" class="base-input" placeholder="Profile music / mood song">
+            <input id="edit-mood" class="base-input" placeholder="Mood">
+            <input id="edit-birthday" class="base-input" placeholder="Birthday e.g. 15 Mar">
+            <input id="edit-banner-url" class="base-input" placeholder="Profile banner image URL">
             <button class="base-btn" onclick="saveProfile()">Save Changes</button>
         </div>
     </div>
@@ -170,6 +175,13 @@
         <div class="modal-card glass-card">
             <div class="modal-top"><h3>Theme Studio</h3><button class="icon-btn" onclick="closeModal('theme-modal')">✕</button></div>
             <div class="theme-grid" id="theme-grid"></div>
+            <div class="divider-space"></div>
+            <label class="modal-label">Wallpaper</label><select id="wallpaper-picker" class="base-input" onchange="applyWallpaperSetting(this.value)"></select>
+            <label class="modal-label">Bubble style</label><select id="bubble-style-picker" class="base-input" onchange="applyBubbleStyle(this.value)"><option value="default">Default</option><option value="telegram">Telegram</option><option value="rounded">Rounded Luxe</option><option value="compact">Compact</option></select>
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="toggleCompactMode()">Toggle compact</button>
+                <button class="base-btn" onclick="toggleAmoledMode()">Toggle AMOLED</button>
+            </div>
         </div>
     </div>
 
@@ -225,6 +237,10 @@
             </select>
             <label class="modal-label">App lock passcode</label>
             <input id="app-passcode" class="base-input" inputmode="numeric" placeholder="Set 4-digit passcode">
+            <label class="modal-label">Self-destruct timer for new messages</label>
+            <select id="self-destruct-seconds" class="base-input"><option value="0">Off</option><option value="30">30 seconds</option><option value="300">5 minutes</option><option value="3600">1 hour</option></select>
+            <label class="modal-label">Hidden chats folder passcode</label>
+            <input id="hidden-passcode" class="base-input" inputmode="numeric" placeholder="Optional hidden folder passcode">
             <div class="modal-actions two">
                 <button class="base-btn secondary" onclick="clearPasscode()">Clear lock</button>
                 <button class="base-btn" onclick="savePrivacySettings()">Save</button>
@@ -245,6 +261,16 @@
             <div id="members-list" class="forward-list"></div>
         </div>
     </div>
+
+
+
+    <div id="saved-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Saved Messages</h3><button class="icon-btn" onclick="closeModal('saved-modal')">✕</button></div><div id="saved-list" class="forward-list"></div></div></div>
+    <div id="room-settings-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Room Settings</h3><button class="icon-btn" onclick="closeModal('room-settings-modal')">✕</button></div><label class="modal-label">Public handle</label><input id="room-public-handle" class="base-input" placeholder="public handle"><label class="modal-label">Rules page</label><textarea id="room-rules-text" class="base-input textarea" placeholder="Rules before joining"></textarea><label class="modal-label">Welcome message</label><input id="room-welcome-message" class="base-input" placeholder="Welcome message"><label class="modal-label">Slow mode seconds</label><input id="room-slow-mode" class="base-input" inputmode="numeric" placeholder="0"><label class="modal-label">Join requests approval</label><select id="room-join-approval" class="base-input"><option value="false">Off</option><option value="true">Require approval</option></select><label class="modal-label">Verification badge</label><select id="room-verified" class="base-input"><option value="false">Normal</option><option value="true">Verified</option></select><div class="modal-actions two"><button class="base-btn secondary" onclick="openJoinRequests()">Join Requests</button><button class="base-btn" onclick="saveRoomSettings()">Save Room</button></div></div></div>
+    <div id="join-requests-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Join Requests</h3><button class="icon-btn" onclick="closeModal('join-requests-modal')">✕</button></div><div id="join-requests-list" class="forward-list"></div></div></div>
+    <div id="admin-logs-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Admin Logs</h3><button class="icon-btn" onclick="closeModal('admin-logs-modal')">✕</button></div><div id="admin-logs-list" class="forward-list"></div></div></div>
+    <div id="discover-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Community Discover</h3><button class="icon-btn" onclick="closeModal('discover-modal')">✕</button></div><div id="discover-list" class="forward-list"></div></div></div>
+    <div id="sticker-modal" class="modal hidden"><div class="modal-card glass-card"><div class="modal-top"><h3>Stickers & GIFs</h3><button class="icon-btn" onclick="closeModal('sticker-modal')">✕</button></div><div class="sticker-pack"><button onclick="sendSticker('😀')">😀</button><button onclick="sendSticker('🔥')">🔥</button><button onclick="sendSticker('🎉')">🎉</button><button onclick="sendSticker('💎')">💎</button><button onclick="sendSticker('🦾')">🦾</button><button onclick="sendSticker('🌌')">🌌</button><button onclick="sendSticker('❤️')">❤️</button><button onclick="sendSticker('😂')">😂</button></div></div></div>
+    <button id="floating-fab" class="floating-fab hidden" onclick="openQuickFab()">＋</button>
 
     <div id="passcode-lock" class="modal hidden">
         <div class="modal-card glass-card">
