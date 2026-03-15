@@ -1827,3 +1827,167 @@ openProfileSheet = function(){
   byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
   byId('chat-profile-sheet').classList.remove('hidden');
 };
+
+
+// ---- interaction hardening patch ----
+(function(){
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', function(event){
+    const now = Date.now();
+    if (now - lastTouchEnd <= 320) event.preventDefault();
+    lastTouchEnd = now;
+  }, {passive:false});
+
+  let lastY = 0;
+  document.addEventListener('touchstart', function(e){
+    if (e.touches && e.touches[0]) lastY = e.touches[0].clientY;
+  }, {passive:true});
+  document.addEventListener('touchmove', function(e){
+    const tgt = e.target;
+    if (tgt && tgt.closest && tgt.closest('input, textarea, [contenteditable="true"]')) return;
+    const scrollTop = document.scrollingElement ? document.scrollingElement.scrollTop : (window.pageYOffset || 0);
+    const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : lastY;
+    const pullingDown = currentY > lastY;
+    if (scrollTop <= 0 && pullingDown) e.preventDefault();
+  }, {passive:false});
+
+  ['contextmenu','selectstart','dragstart'].forEach((type) => {
+    document.addEventListener(type, function(e){
+      const t = e.target;
+      if (!t) return;
+      if (t.closest && t.closest('input, textarea, [contenteditable="true"]')) return;
+      if (t.closest && (t.closest('.attach-btn') || t.closest('.bubble') || t.closest('.msg-wrapper') || t.closest('.message-actions') || t.closest('.chat-row'))) {
+        e.preventDefault();
+      }
+    }, {passive:false});
+  });
+
+  document.addEventListener('selectionchange', function(){
+    const sel = window.getSelection?.();
+    if (!sel || sel.isCollapsed) return;
+    const node = sel.anchorNode && sel.anchorNode.parentElement ? sel.anchorNode.parentElement : null;
+    if (node && !node.closest('input, textarea, [contenteditable="true"]')) sel.removeAllRanges();
+  });
+})();
+
+function renderRecentChatsWithSwipe(){
+  const list = byId('chat-list'); if (!list) return;
+  const filtered = state.recentChats.filter((item) => {
+    const key = currentRoomKeyFor(item);
+    const archived = state.archivedChats.has(key);
+    const hidden = state.hiddenChats.has(key);
+    if (hidden) return false;
+    if (state.listFilter === 'archived') return archived;
+    if (archived) return false;
+    if (state.listFilter === 'all') return true;
+    return (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter;
+  }).sort((a,b)=> new Date(b.time||0)-new Date(a.time||0));
+  list.innerHTML = filtered.length ? filtered.map((item) => `
+    <div class="chat-row-swipe-wrap" data-chat-id="${escapeHtml(item.id)}" data-group="${item.is_group ? '1' : '0'}">
+      <button type="button" class="chat-swipe-delete" data-delete-chat="1">Delete</button>
+      ${recentChatRowHtml(item)}
+    </div>`).join('') : '<div class="empty-mini">No chats yet</div>';
+  bindChatSwipeDelete();
+}
+renderRecentChats = renderRecentChatsWithSwipe;
+
+function bindChatSwipeDelete(){
+  const list = byId('chat-list');
+  if (!list || list.dataset.swipeBound === '1') return;
+  list.dataset.swipeBound = '1';
+  let activeRow = null, startX = 0, currentX = 0, swiping = false;
+
+  function closeAll(except){
+    list.querySelectorAll('.chat-row.swiped').forEach((row) => { if (row !== except) row.classList.remove('swiped'); });
+  }
+
+  list.addEventListener('click', async (e) => {
+    const del = e.target.closest('.chat-swipe-delete');
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = del.closest('.chat-row-swipe-wrap');
+      if (!wrap) return;
+      await deleteChatPrompt(wrap.dataset.chatId, wrap.dataset.group === '1');
+      return;
+    }
+    const row = e.target.closest('.chat-row');
+    if (!row) return;
+    if (swiping || row.classList.contains('swiped')) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (row.classList.contains('swiped')) row.classList.remove('swiped');
+      swiping = false;
+      return;
+    }
+  }, true);
+
+  list.addEventListener('touchstart', (e) => {
+    const row = e.target.closest('.chat-row');
+    if (!row) return;
+    activeRow = row;
+    startX = e.touches[0].clientX;
+    currentX = startX;
+    swiping = false;
+    closeAll(activeRow);
+  }, {passive:true});
+
+  list.addEventListener('touchmove', (e) => {
+    if (!activeRow) return;
+    currentX = e.touches[0].clientX;
+    const dx = currentX - startX;
+    if (dx < -10) {
+      swiping = true;
+      e.preventDefault();
+      const limited = Math.max(dx, -88);
+      activeRow.style.setProperty('--swipe-x', `${limited}px`);
+      activeRow.classList.add('swiping-open');
+    }
+  }, {passive:false});
+
+  list.addEventListener('touchend', () => {
+    if (!activeRow) return;
+    const dx = currentX - startX;
+    activeRow.classList.remove('swiping-open');
+    activeRow.style.removeProperty('--swipe-x');
+    if (dx < -54) activeRow.classList.add('swiped');
+    else activeRow.classList.remove('swiped');
+    setTimeout(() => { swiping = false; }, 30);
+    activeRow = null;
+  }, {passive:true});
+}
+
+window.addEventListener('load', bindChatSwipeDelete);
+
+const __origStartVoiceRecord = startVoiceRecord;
+startVoiceRecord = async function(ev){
+  ev?.preventDefault?.();
+  ev?.stopPropagation?.();
+  document.activeElement?.blur?.();
+  return __origStartVoiceRecord();
+};
+const __origStopVoiceRecord = stopVoiceRecord;
+stopVoiceRecord = function(ev){
+  ev?.preventDefault?.();
+  ev?.stopPropagation?.();
+  return __origStopVoiceRecord();
+};
+
+renderChatPanel = (function(orig){
+  return function(name, pfp, isGroup){
+    orig(name, pfp, isGroup);
+    const mic = document.querySelector('.chat-input-area .attach-btn:last-of-type');
+    if (mic) {
+      mic.setAttribute('oncontextmenu','return false');
+      mic.setAttribute('onselectstart','return false');
+      mic.setAttribute('draggable','false');
+      mic.onmousedown = (e) => startVoiceRecord(e);
+      mic.onmouseup = (e) => stopVoiceRecord(e);
+      mic.onmouseleave = (e) => stopVoiceRecord(e);
+      mic.ontouchstart = (e) => startVoiceRecord(e);
+      mic.ontouchend = (e) => stopVoiceRecord(e);
+      mic.ontouchcancel = (e) => stopVoiceRecord(e);
+    }
+    byId('messages-view')?.setAttribute('oncontextmenu','return false');
+  }
+})(renderChatPanel);
