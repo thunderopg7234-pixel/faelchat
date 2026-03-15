@@ -232,84 +232,13 @@ function formatRelativeStatus(raw) {
   return raw;
 }
 
-async function openProfileSheet() {
-  const banner = byId('profile-hero-banner');
-  const verified = byId('sheet-verified');
-  const badges = byId('sheet-badges');
-  const dot = byId('sheet-presence-dot');
+function openProfileSheet() {
   setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP);
   byId('sheet-name').textContent = state.currentTargetName || 'User';
-  byId('sheet-handle').textContent = state.isCurrentChatGroup ? `#${state.currentTargetID}` : `@${state.currentTargetID}`;
-  byId('sheet-kind').textContent = state.currentTargetKind || (state.isCurrentChatGroup ? 'group' : 'private');
+  byId('sheet-handle').textContent = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
+  byId('sheet-kind').textContent = state.currentTargetKind;
   byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
-  byId('sheet-status').textContent = '—';
-  byId('sheet-username').textContent = state.isCurrentChatGroup ? `#${state.currentTargetID}` : `@${state.currentTargetID}`;
-  byId('sheet-birthday').textContent = '—';
-  byId('sheet-mood').textContent = '—';
-  byId('sheet-music').textContent = '—';
-  byId('sheet-mutual').textContent = state.isCurrentChatGroup ? '—' : '0 rooms';
-  byId('sheet-members').textContent = state.isCurrentChatGroup ? 'Loading…' : '—';
-  byId('sheet-presence').textContent = 'Loading…';
-  verified.classList.add('hidden');
-  badges.innerHTML = '';
-  dot.classList.remove('hidden');
-  banner.style.backgroundImage = '';
-  banner.classList.remove('banner-image');
   byId('chat-profile-sheet').classList.remove('hidden');
-
-  if (state.isCurrentChatGroup) {
-    try {
-      const res = await fetch(`/room_meta/${encodeURIComponent(state.currentTargetID)}`);
-      const data = await res.json();
-      if (data.status === 'success') {
-        const room = data.room;
-        state.currentTargetBio = room.description || state.currentTargetBio;
-        byId('sheet-name').textContent = room.name || state.currentTargetName;
-        byId('sheet-handle').textContent = room.public_handle ? `@${room.public_handle}` : `#${room.code}`;
-        byId('sheet-kind').textContent = room.kind === 'channel' ? 'Channel' : 'Group';
-        byId('sheet-bio').textContent = room.description || 'No description yet';
-        byId('sheet-status').textContent = room.visibility === 'private' ? 'Private room' : 'Public room';
-        byId('sheet-username').textContent = room.public_handle ? `@${room.public_handle}` : `#${room.code}`;
-        byId('sheet-members').textContent = `${room.member_count || 0} ${room.kind === 'channel' ? 'subscribers' : 'members'}`;
-        byId('sheet-presence').textContent = `${room.member_count || 0} ${room.kind === 'channel' ? 'subscribers' : 'members'}`;
-        dot.classList.add('hidden');
-        if (room.is_verified) verified.classList.remove('hidden');
-        badges.innerHTML = `<span class="badge-pill">${room.visibility || 'public'}</span><span class="badge-pill">${room.kind}</span>${room.join_approval ? '<span class="badge-pill">approval</span>' : ''}`;
-      }
-    } catch (e) {}
-  } else {
-    try {
-      const [profileRes, mutualRes] = await Promise.all([
-        fetch(`/profile/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`),
-        fetch(`/mutual_rooms/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`)
-      ]);
-      const pdata = await profileRes.json();
-      const mdata = await mutualRes.json();
-      if (pdata.status === 'success') {
-        byId('sheet-name').textContent = pdata.username || state.currentTargetName;
-        byId('sheet-handle').textContent = `@${pdata.tele_id}`;
-        byId('sheet-kind').textContent = 'Private chat';
-        byId('sheet-bio').textContent = pdata.bio || 'No bio yet';
-        byId('sheet-status').textContent = pdata.status_text || '—';
-        byId('sheet-username').textContent = `@${pdata.tele_id}`;
-        byId('sheet-birthday').textContent = pdata.birthday || '—';
-        byId('sheet-mood').textContent = pdata.mood || '—';
-        byId('sheet-music').textContent = pdata.profile_music || '—';
-        byId('sheet-presence').textContent = formatRelativeStatus(pdata.last_seen_label || (pdata.online ? 'online' : 'offline'));
-        dot.classList.toggle('hidden', !pdata.online);
-        if (pdata.banner_url) {
-          banner.style.backgroundImage = `linear-gradient(180deg, rgba(10,10,14,.06), rgba(10,10,14,.28)), url(${pdata.banner_url})`;
-          banner.classList.add('banner-image');
-        }
-        badges.innerHTML = `${pdata.mood ? `<span class="badge-pill">${escapeHtml(pdata.mood)}</span>` : ''}${pdata.profile_music ? '<span class="badge-pill">music</span>' : ''}`;
-      }
-      if (mdata.status === 'success') {
-        byId('sheet-mutual').textContent = `${mdata.count || 0} rooms`;
-      }
-    } catch (e) {
-      byId('sheet-presence').textContent = 'offline';
-    }
-  }
 }
 
 function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
@@ -321,21 +250,7 @@ async function startSession() {
   maybeShowMobileTabs();
   hydrateProfile();
   renderThemeCards();
-  
-byId('suggestions')?.addEventListener('click', async (e) => {
-  const row = e.target.closest('.suggestion-row');
-  if (!row) return;
-  const item = {
-    type: row.dataset.type,
-    id: row.dataset.id,
-    name: row.dataset.name,
-    pfp: row.dataset.pfp,
-    bio: row.dataset.bio,
-  };
-  await chooseSuggestion(item);
-});
-
-applyTheme(state.myTheme, false);
+  applyTheme(state.myTheme, false);
   socket.emit('connect_radar', { my_id: state.myID });
   await loadPrivacySettings();
   await loadRecentChats();
@@ -393,60 +308,46 @@ function renderRecentChats() {
 async function doSearch() {
   const q = byId('search-input').value.trim();
   const suggestions = byId('suggestions');
-  const quick = byId('quick-create-row');
   if (!q) {
     suggestions.innerHTML = '';
     suggestions.classList.remove('show');
-    quick?.classList.remove('searching');
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
   const rows = await res.json();
   suggestions.classList.add('show');
-  quick?.classList.add('searching');
   suggestions.innerHTML = rows.length ? rows.map((item) => {
-    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Tap to open channel' : 'Tap to open group');
-    const subtitle = item.type === 'user' ? '@' + (item.id || '') : (item.public_handle ? '@' + item.public_handle : (item.description || item.id || ''));
+    const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Read-only by default' : 'Group room');
+    const isGroup = item.type !== 'user';
     return `
-      <button type="button" class="suggestion-row" data-type="${escapeHtml(item.type || '')}" data-id="${escapeHtml(item.id || '')}" data-name="${escapeHtml(item.name || '')}" data-pfp="${escapeHtml(item.pfp || '')}" data-bio="${escapeHtml(item.bio || item.description || '')}">
+      <div class="suggestion-row" onclick="chooseSuggestion(${JSON.stringify(item)})">
         <div class="avatar-row-wrap">
           <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
           ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
         </div>
         <div class="chat-meta">
           <strong>${escapeHtml(item.name)}</strong>
-          <p>${escapeHtml(subtitle)}</p>
+          <p>${escapeHtml(isGroup ? item.description || item.id : '@' + item.id)}</p>
           <small class="muted">${escapeHtml(label)}</small>
         </div>
         <span class="tag">${escapeHtml(item.type)}</span>
-      </button>`;
+      </div>`;
   }).join('') : '<div class="empty-mini">No results</div>';
 }
 
 async function chooseSuggestion(item) {
   byId('search-input').value = '';
-  byId('suggestions').innerHTML = '';
   byId('suggestions').classList.remove('show');
-  byId('quick-create-row')?.classList.remove('searching');
-  if (!item || !item.id) {
-    showToast('Invalid search result');
-    return;
-  }
   if (item.type === 'user') {
-    await openChat(item.name, item.id, item.pfp || '', false, item);
-    setMobileTab('chat');
-    return;
+    openChat(item.name, item.id, item.pfp || '', false, item);
+  } else {
+    const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: item.id, tele_id: state.myID }) });
+    const data = await res.json();
+    if (data.status !== 'success') return showToast(data.message || 'Could not join');
+    showToast(`Joined ${item.type}`);
+    await loadRecentChats();
+    openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
   }
-  const res = await fetch('/join_room', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: item.id, tele_id: state.myID }) });
-  const data = await res.json();
-  if (data.status === 'pending') {
-    showToast('Join request sent');
-    return;
-  }
-  if (data.status !== 'success') return showToast(data.message || 'Could not open');
-  await loadRecentChats();
-  await openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
-  setMobileTab('chat');
 }
 
 async function createRoom() {
@@ -907,7 +808,7 @@ socket.on('room_meta_updated', (payload) => {
 });
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.search-wrap')) { byId('suggestions').classList.remove('show'); byId('quick-create-row')?.classList.remove('searching'); }
+  if (!event.target.closest('.search-wrap')) byId('suggestions').classList.remove('show');
   if (!event.target.closest('#reaction-picker') && !event.target.closest('.message-actions button')) byId('reaction-picker').classList.add('hidden');
   if (event.target.classList.contains('modal')) event.target.classList.add('hidden');
 });
@@ -1136,3 +1037,238 @@ const _origJoinRoom = joinRoom; joinRoom = async function() { const code = byId(
 window.sendLocationCard = function() { if (!navigator.geolocation) return showToast('Location not supported'); navigator.geolocation.getCurrentPosition((pos) => { socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: 'text', content: `📍 https://maps.google.com/?q=${pos.coords.latitude},${pos.coords.longitude}` }); }); };
 window.openAIAssistant = function() { const promptText = prompt('Ask the mini bot anything'); if (!promptText || !state.currentTargetID) return; const reply = `🤖 FaelBot: ${translateTextLite(promptText).split('').reverse().join('')}`; socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: 'FaelBot', target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: 'text', content: reply }); };
 window.makePoll = function() { if (!state.currentTargetID) return showToast('Open a chat first'); const q = prompt('Poll question'); if (!q) return; const opts = (prompt('Options separated by commas', 'Yes,No,Maybe') || '').split(',').map(s=>s.trim()).filter(Boolean).slice(0,6); if (!opts.length) return; socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: 'text', content: '[[poll]]' + JSON.stringify({ question:q, options:opts }) }); };
+
+
+// ---- Divine UI stability patch ----
+Object.assign(THEMES, {
+  'obsidian-gold': { label: 'Obsidian Gold', color: '#0B0B0F' },
+  'crimson-noir': { label: 'Crimson Noir', color: '#0E0A0B' },
+  'arctic-glass': { label: 'Arctic Glass', color: '#EEF6FF' },
+  'sakura-neon': { label: 'Sakura Neon', color: '#FFF2F7' },
+  'matrix-cyber': { label: 'Matrix Cyber', color: '#05080A' },
+  'sunset-luxe': { label: 'Sunset Luxe', color: '#FFF7F2' },
+  'ice-purple': { label: 'Ice Purple', color: '#F5F3FF' },
+  'amoled-void': { label: 'AMOLED Void', color: '#000000' },
+});
+
+function themeMetaColor(themeKey) {
+  return (THEMES[themeKey] && THEMES[themeKey].color) || '#06131f';
+}
+
+const _origApplyTheme = applyTheme;
+applyTheme = function(themeKey, persist = true) {
+  const safe = THEMES[themeKey] ? themeKey : 'midnight-cyan';
+  _origApplyTheme(safe, persist);
+  document.documentElement.style.setProperty('--theme-meta-color', themeMetaColor(safe));
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', themeMetaColor(safe));
+};
+
+function currentRoomKeyFor(item) {
+  return `${item.is_group ? 'group' : 'dm'}:${item.id}`;
+}
+
+function recentChatRowHtml(item) {
+  const kind = item.kind || (item.is_group ? 'group' : 'private');
+  const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'user';
+  const statusText = item.is_group
+    ? `${kind}${item.role ? ` · ${item.role}` : ''}`
+    : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+  const key = currentRoomKeyFor(item);
+  const muted = state.mutedChats.has(key);
+  const pinned = state.pinnedChats.has(key);
+  return `
+    <button type="button" class="chat-row ${pinned ? 'pinned-chat' : ''} ${state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group) ? 'active' : ''}"
+      data-chat-id="${escapeHtml(item.id)}"
+      data-chat-name="${escapeHtml(item.name)}"
+      data-chat-pfp="${escapeHtml(item.pfp || '')}"
+      data-chat-group="${item.is_group ? '1' : '0'}"
+      data-chat-meta="${encodeURIComponent(JSON.stringify(item))}">
+      <div class="avatar-row-wrap">
+        <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+        ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
+      </div>
+      <div class="chat-meta">
+        <div class="row-between"><strong>${escapeHtml(item.name)}</strong><small>${formatTime(item.time)}</small></div>
+        <p>${escapeHtml(item.last_msg || statusText)}</p>
+        <small class="muted">${escapeHtml(statusText)}${muted ? ' · muted' : ''}</small>
+      </div>
+      <span class="tag">${badge}${muted ? ' · mute' : ''}</span>
+    </button>`;
+}
+
+renderRecentChats = function() {
+  const list = byId('chat-list');
+  if (!list) return;
+  const filtered = state.recentChats.filter((item) => {
+    const key = currentRoomKeyFor(item);
+    const archived = state.archivedChats.has(key);
+    const hidden = state.hiddenChats.has(key);
+    if (hidden) return false;
+    if (state.listFilter === 'archived') return archived;
+    if (archived) return false;
+    if (state.listFilter === 'all') return true;
+    return (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter;
+  }).sort((a, b) => {
+    const aPinned = state.pinnedChats.has(currentRoomKeyFor(a)) ? 1 : 0;
+    const bPinned = state.pinnedChats.has(currentRoomKeyFor(b)) ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+    return new Date(b.time || 0) - new Date(a.time || 0);
+  });
+  list.innerHTML = filtered.length ? filtered.map(recentChatRowHtml).join('') : '<div class="empty-mini">No chats yet</div>';
+};
+
+doSearch = async function() {
+  const q = byId('search-input').value.trim();
+  const suggestions = byId('suggestions');
+  if (!q) {
+    suggestions.innerHTML = '';
+    suggestions.classList.remove('show');
+    return;
+  }
+  const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
+  const rows = await res.json();
+  suggestions.classList.add('show');
+  suggestions.innerHTML = rows.length ? rows.map((item) => {
+    const label = item.type === 'user'
+      ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'))
+      : (item.type === 'channel' ? 'Read-only channel' : 'Group room');
+    const subtitle = item.type === 'user' ? '@' + item.id : (item.public_handle ? '@' + item.public_handle : (item.description || item.id));
+    return `
+      <button type="button" class="suggestion-row"
+        data-item="${encodeURIComponent(JSON.stringify(item))}">
+        <div class="avatar-row-wrap">
+          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="chat-meta">
+          <strong>${escapeHtml(item.name)}</strong>
+          <p>${escapeHtml(subtitle)}</p>
+          <small class="muted">${escapeHtml(label)}</small>
+        </div>
+        <span class="tag">${escapeHtml(item.type)}</span>
+      </button>`;
+  }).join('') : '<div class="empty-mini">No results</div>';
+};
+
+chooseSuggestion = async function(item) {
+  byId('search-input').value = '';
+  byId('suggestions').innerHTML = '';
+  byId('suggestions').classList.remove('show');
+  if (!item || !item.id) return showToast('Invalid search result');
+  if (item.type === 'user') {
+    await openChat(item.name, item.id, item.pfp || '', false, item);
+    if (isMobileLayout()) setMobileTab('chat');
+    return;
+  }
+  const res = await fetch('/join_room', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: item.id, tele_id: state.myID })
+  });
+  const data = await res.json();
+  if (data.status === 'pending') return showToast('Join request sent');
+  if (data.status !== 'success') return showToast(data.message || 'Could not join');
+  await loadRecentChats();
+  await openChat(data.room.name, data.room.code, data.room.pfp || '', true, data.room);
+  if (isMobileLayout()) setMobileTab('chat');
+};
+
+const _oldOpenProfileSheet = openProfileSheet;
+openProfileSheet = async function() {
+  _oldOpenProfileSheet();
+  const card = document.querySelector('#chat-profile-sheet .profile-sheet-card');
+  if (!card || !state.currentTargetID) return;
+  let extraHtml = '';
+  if (state.isCurrentChatGroup) {
+    try {
+      const res = await fetch(`/room_meta/${encodeURIComponent(state.currentTargetID)}`);
+      const data = await res.json();
+      if (data.status === 'success') {
+        const room = data.room;
+        byId('sheet-kind').textContent = `${room.kind}${room.is_verified ? ' · verified' : ''}`;
+        byId('sheet-bio').textContent = room.description || 'No description yet';
+        byId('sheet-handle').textContent = room.public_handle ? '@' + room.public_handle : state.currentTargetID;
+        extraHtml = `<div class="profile-stat-grid">
+          <div class="profile-stat"><span>Subscribers</span><strong>${room.member_count || 0}</strong></div>
+          <div class="profile-stat"><span>Visibility</span><strong>${escapeHtml(room.visibility || 'public')}</strong></div>
+          <div class="profile-stat"><span>Invite</span><strong>${room.invite_token ? 'Private link' : 'Room code'}</strong></div>
+          <div class="profile-stat"><span>Role</span><strong>${escapeHtml(state.currentRole || 'member')}</strong></div>
+        </div>`;
+      }
+    } catch (e) {}
+  } else {
+    try {
+      const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`);
+      const data = await res.json();
+      if (data.status === 'success') {
+        byId('sheet-handle').textContent = '@' + state.currentTargetID;
+        byId('sheet-bio').textContent = data.bio || 'No bio yet';
+        const hero = document.querySelector('.profile-sheet-hero');
+        if (hero) hero.style.backgroundImage = data.banner_url ? `linear-gradient(180deg, rgba(6,19,31,.08), rgba(6,19,31,.42)), url(${data.banner_url})` : '';
+        extraHtml = `<div class="profile-stat-grid">
+          <div class="profile-stat"><span>Status</span><strong>${escapeHtml(data.status_text || formatRelativeStatus(data.last_seen_label || 'offline'))}</strong></div>
+          <div class="profile-stat"><span>Birthday</span><strong>${escapeHtml(data.birthday || '—')}</strong></div>
+          <div class="profile-stat"><span>Mood</span><strong>${escapeHtml(data.mood || '—')}</strong></div>
+          <div class="profile-stat"><span>Music</span><strong>${escapeHtml(data.profile_music || '—')}</strong></div>
+        </div>`;
+      }
+    } catch (e) {}
+  }
+  let mount = card.querySelector('.profile-sheet-extra');
+  if (!mount) {
+    mount = document.createElement('div');
+    mount.className = 'profile-sheet-extra';
+    card.appendChild(mount);
+  }
+  mount.innerHTML = extraHtml;
+};
+
+const _origRenderChatPanel2 = renderChatPanel;
+renderChatPanel = function(name, pfp, isGroup) {
+  _origRenderChatPanel2(name, pfp, isGroup);
+  const area = document.querySelector('.chat-input-area');
+  if (area) {
+    area.innerHTML = `
+      <button class="attach-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+      <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
+      <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
+      <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
+      <button class="send-btn" onclick="sendMsg()">➤</button>`;
+  }
+  const header = document.querySelector('.chat-header-left');
+  if (header) header.setAttribute('role', 'button');
+};
+
+const _origOpenChat2 = openChat;
+openChat = async function(name, id, pfp, isGroup, meta = {}) {
+  await _origOpenChat2(name, id, pfp, isGroup, meta);
+  const panel = byId('chat-panel');
+  panel?.classList.add('chat-panel-live');
+  const input = byId('msg-input');
+  if (input) input.placeholder = isGroup ? `Message ${name}` : 'Message';
+};
+
+function bindDivineTapHandlers() {
+  byId('chat-list')?.addEventListener('click', async (e) => {
+    const row = e.target.closest('.chat-row');
+    if (!row) return;
+    const metaRaw = row.dataset.chatMeta ? decodeURIComponent(row.dataset.chatMeta) : '{}';
+    let meta = {};
+    try { meta = JSON.parse(metaRaw); } catch (e) {}
+    await openChat(row.dataset.chatName || meta.name || '', row.dataset.chatId || meta.id || '', row.dataset.chatPfp || meta.pfp || '', row.dataset.chatGroup === '1', meta);
+  });
+  byId('suggestions')?.addEventListener('click', async (e) => {
+    const row = e.target.closest('.suggestion-row');
+    if (!row) return;
+    let item = {};
+    try { item = JSON.parse(decodeURIComponent(row.dataset.item || '%7B%7D')); } catch (e) {}
+    await chooseSuggestion(item);
+  });
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrap')) {
+      byId('suggestions')?.classList.remove('show');
+    }
+  });
+}
+
+window.addEventListener('load', bindDivineTapHandlers);

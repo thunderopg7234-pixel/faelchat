@@ -86,40 +86,63 @@ body[data-bubble-style='rounded'] .bubble{border-radius:28px;}
 body[data-theme='obsidian-gold']{--accent:#D4A84F;color:#F7F3E8} body[data-theme='crimson-noir']{--accent:#B91C1C} body[data-theme='arctic-glass']{--accent:#60A5FA} body[data-theme='sakura-neon']{--accent:#EC4899} body[data-theme='matrix-cyber']{--accent:#10B981} body[data-theme='sunset-luxe']{--accent:#F97316} body[data-theme='ice-purple']{--accent:#7C3AED} body[data-theme='amoled-void']{--accent:#3B82F6}
 @media (max-width:980px){.floating-fab{bottom:96px}}
 
-.search-wrap{position:relative;z-index:35}
-.suggestions{position:absolute;top:calc(100% + 10px);left:0;right:0;display:none;max-height:320px;overflow:auto;padding:10px;border-radius:24px;background:rgba(255,255,255,.97);backdrop-filter:blur(20px);box-shadow:0 20px 50px rgba(15,23,42,.16);border:1px solid rgba(255,255,255,.72);z-index:999}
-.suggestions.show{display:flex;flex-direction:column;gap:8px}
-.suggestion-row{width:100%;border:0;text-align:left;-webkit-tap-highlight-color:transparent}
-.suggestion-row:active{transform:scale(.99)}
-.profile-sheet-card.divine-profile-card{padding:0;overflow:hidden;max-height:min(92dvh,860px);overflow-y:auto}
-.profile-hero-banner{height:190px;background:linear-gradient(135deg, rgba(236,72,153,.82), rgba(168,85,247,.78));position:relative}
-.profile-hero-banner.banner-image{background-size:cover;background-position:center}
-.profile-hero-banner::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(15,23,42,.18));}
-.profile-hero-content{margin-top:-78px;padding:0 22px 18px;position:relative;z-index:2;display:flex;gap:16px;align-items:flex-end}
-.divine-avatar{width:124px;height:124px;border-radius:36px;border:4px solid rgba(255,255,255,.9);box-shadow:0 18px 38px rgba(0,0,0,.16);background-color:#fff}
-.profile-hero-meta{padding-bottom:8px;min-width:0;flex:1}
-.profile-name-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.profile-name-row h3{font-size:2rem;line-height:1.02;margin:0;color:#fff;text-shadow:0 3px 16px rgba(0,0,0,.22)}
-.profile-hero-meta>#sheet-handle{margin:6px 0 8px;color:rgba(255,255,255,.92);font-weight:700}
-.profile-presence-row{display:flex;align-items:center;gap:8px;color:#fff;font-weight:700}
-.online-dot.inline{position:static;display:inline-block}
-.profile-badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.profile-badges .badge-pill{background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.24)}
-.profile-stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 22px 18px}
-.profile-stat-card{background:rgba(255,255,255,.78);border:1px solid rgba(255,255,255,.72);border-radius:22px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;box-shadow:0 12px 26px rgba(15,23,42,.06)}
-.profile-stat-card .label{font-size:.78rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
-.divine-info-card,.divine-actions-card{margin:0 22px 18px;padding:8px 16px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.66);border-radius:28px}
-.telegram-info-row{display:flex;flex-direction:column;gap:6px;padding:14px 6px;border-bottom:1px solid rgba(148,163,184,.16)}
-.telegram-info-row:last-child{border-bottom:none}
-.telegram-info-row span{font-size:.86rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
-.telegram-info-row strong{font-size:1.06rem;line-height:1.35}
-.profile-sheet .telegram-row{padding-left:6px;padding-right:6px}
+
+/* ---- Extreme divine visual patch ---- */
+body[data-theme="obsidian-gold"]{--bg-1:#0B0B0F;--bg-2:#15151D;--bg-3:#3A2B12;--card:rgba(21,21,29,.86);--card-strong:rgba(21,21,29,.94);--surface:rgba(24,19,12,.55);--text:#F7F3E8;--muted:#B9B09B;--line:rgba(212,168,79,.18);--accent:#D4A84F;--accent-2:#F3D38A;--pink:#D4A84F;--sent:linear-gradient(135deg,#7d5a18,#d4a84f);--recv:rgba(34,28,20,.96)}
+body[data-theme="crimson-noir"]{--bg-1:#0E0A0B;--bg-2:#1B1114;--bg-3:#5B1520;--card:rgba(27,17,20,.86);--card-strong:rgba(27,17,20,.94);--surface:rgba(56,20,27,.55);--text:#F8EDED;--muted:#C8AEB4;--line:rgba(248,113,113,.16);--accent:#F87171;--accent-2:#B91C1C;--pink:#FB7185;--sent:linear-gradient(135deg,#7f1d1d,#f87171);--recv:rgba(40,20,26,.96)}
+body[data-theme="arctic-glass"]{--bg-1:#EEF6FF;--bg-2:#D9EEFF;--bg-3:#A5F3FC;--card:rgba(255,255,255,.76);--card-strong:rgba(255,255,255,.93);--surface:rgba(255,255,255,.55);--text:#102033;--muted:#6B7B8F;--line:rgba(96,165,250,.16);--accent:#60A5FA;--accent-2:#38BDF8;--pink:#7C3AED;--sent:linear-gradient(135deg,#60a5fa,#22d3ee);--recv:rgba(255,255,255,.97)}
+body[data-theme="sakura-neon"]{--bg-1:#FFF2F7;--bg-2:#FFD6E8;--bg-3:#F9A8D4;--card:rgba(255,255,255,.8);--card-strong:rgba(255,255,255,.93);--surface:rgba(255,255,255,.56);--text:#3A1630;--muted:#8D6A82;--line:rgba(236,72,153,.14);--accent:#EC4899;--accent-2:#F472B6;--pink:#EC4899;--sent:linear-gradient(135deg,#ec4899,#f9a8d4);--recv:rgba(255,255,255,.97)}
+body[data-theme="matrix-cyber"]{--bg-1:#05080A;--bg-2:#0E1417;--bg-3:#10352D;--card:rgba(14,20,23,.86);--card-strong:rgba(14,20,23,.94);--surface:rgba(17,34,28,.54);--text:#D9FFF2;--muted:#87B4A6;--line:rgba(16,185,129,.14);--accent:#10B981;--accent-2:#34D399;--pink:#34D399;--sent:linear-gradient(135deg,#065f46,#34d399);--recv:rgba(15,28,24,.96)}
+body[data-theme="sunset-luxe"]{--bg-1:#FFF7F2;--bg-2:#FFE2D3;--bg-3:#FB7185;--card:rgba(255,255,255,.8);--card-strong:rgba(255,255,255,.94);--surface:rgba(255,255,255,.56);--text:#3B1F12;--muted:#8B6A5D;--line:rgba(249,115,22,.14);--accent:#F97316;--accent-2:#FB7185;--pink:#FB7185;--sent:linear-gradient(135deg,#f97316,#fb7185);--recv:rgba(255,255,255,.97)}
+body[data-theme="ice-purple"]{--bg-1:#F5F3FF;--bg-2:#EDE9FE;--bg-3:#22D3EE;--card:rgba(255,255,255,.82);--card-strong:rgba(255,255,255,.95);--surface:rgba(255,255,255,.58);--text:#22163A;--muted:#7E72A1;--line:rgba(124,58,237,.12);--accent:#7C3AED;--accent-2:#22D3EE;--pink:#A78BFA;--sent:linear-gradient(135deg,#7c3aed,#22d3ee);--recv:rgba(255,255,255,.97)}
+body[data-theme="amoled-void"]{--bg-1:#000000;--bg-2:#05070C;--bg-3:#071A2D;--card:rgba(10,10,10,.93);--card-strong:rgba(10,10,10,.98);--surface:rgba(17,17,17,.72);--text:#F5FAFF;--muted:#7A8699;--line:rgba(59,130,246,.14);--accent:#3B82F6;--accent-2:#22D3EE;--pink:#22D3EE;--sent:linear-gradient(135deg,#2563eb,#22d3ee);--recv:rgba(12,12,12,.98)}
+
+html,body{background-color:var(--bg-1)}
+body{position:relative;background:linear-gradient(160deg,var(--bg-1),var(--bg-2) 45%,var(--bg-3)) fixed;color:var(--text);transition:background .35s ease,color .2s ease}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 12% 18%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 28%),radial-gradient(circle at 88% 14%, color-mix(in srgb, var(--pink) 22%, transparent), transparent 24%),radial-gradient(circle at 70% 86%, color-mix(in srgb, var(--accent-2) 18%, transparent), transparent 30%);opacity:.95}
+.app-shell,.main-app,.chat-shell{position:relative;z-index:1}
+.chat-panel{background:linear-gradient(180deg,color-mix(in srgb, var(--card) 85%, transparent),color-mix(in srgb, var(--surface) 92%, transparent))}
+.chat-header{position:sticky;top:0;z-index:6;background:color-mix(in srgb, var(--card-strong) 88%, transparent);backdrop-filter:blur(22px)}
+.chat-header-left{min-width:0;flex:1}
+.chat-header-meta strong{display:block;font-size:1.08rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-header-meta p{font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.messages-view{background-image:var(--chat-wallpaper), radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 26%), linear-gradient(180deg, color-mix(in srgb, var(--card-strong) 10%, transparent), color-mix(in srgb, var(--surface) 4%, transparent));background-attachment:scroll;background-size:cover;padding-bottom:110px}
+.chat-input-area{position:sticky;bottom:0;z-index:7;display:grid;grid-template-columns:46px minmax(0,1fr) 46px 46px;gap:10px;align-items:center;background:color-mix(in srgb, var(--card-strong) 92%, transparent);backdrop-filter:blur(24px);padding:14px 18px calc(14px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+.chat-input-area input[type="text"]{display:block;width:100%;min-width:0;height:48px;border-radius:24px;padding:0 16px;background:color-mix(in srgb, var(--card-strong) 96%, transparent);color:var(--text)}
+.chat-tools-bar{position:sticky;top:76px;z-index:5;background:color-mix(in srgb, var(--surface) 70%, transparent);backdrop-filter:blur(12px);padding:10px 18px 12px}
+.chat-search-input{background:color-mix(in srgb, var(--card-strong) 92%, transparent);color:var(--text)}
+.chat-row,.suggestion-row{border:none;width:100%;text-align:left}
+.suggestion-row{background:transparent}
+.suggestions{background:color-mix(in srgb, var(--card-strong) 94%, transparent);backdrop-filter:blur(18px);z-index:120}
+.profile-sheet-card{overflow:hidden;padding:0}
+.profile-sheet-hero{padding:22px 22px 18px;background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent-2) 22%, transparent));background-size:cover;background-position:center;align-items:flex-end;min-height:170px}
+.profile-sheet-meta{padding-bottom:4px}
+.profile-sheet-actions,.profile-sheet-extra{margin:0 18px 18px}
+.profile-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 18px 18px}
+.profile-stat{background:color-mix(in srgb, var(--card-strong) 92%, transparent);border:1px solid var(--line);border-radius:18px;padding:14px}
+.profile-stat span{display:block;color:var(--muted);font-size:.78rem;margin-bottom:6px}
+.profile-stat strong{display:block;font-size:.98rem;line-height:1.3;word-break:break-word}
+.avatar.large{box-shadow:0 18px 35px rgba(0,0,0,.18)}
+.theme-card{background:color-mix(in srgb, var(--card-strong) 88%, transparent)}
+.theme-card strong{color:var(--text)}
+.telegram-row,.base-input,.chat-search-input,.chat-input-area input[type="text"],.chat-row,.suggestion-row{color:var(--text)}
+.bubble.received{background:var(--recv);color:var(--text)}
+.bubble.sent{background:var(--sent)}
+.message-actions button,.reaction-pill,.icon-btn,.attach-btn{background:color-mix(in srgb, var(--card-strong) 94%, transparent);color:var(--text)}
+.send-btn{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff}
 @media (max-width:980px){
-  .profile-sheet-card.divine-profile-card{width:min(100vw - 16px, 520px);bottom:8px;border-radius:34px}
-  .profile-hero-banner{height:180px}
-  .profile-hero-content{padding:0 18px 16px;gap:12px;align-items:end}
-  .divine-avatar{width:102px;height:102px;border-radius:30px}
-  .profile-name-row h3{font-size:1.7rem}
-  .profile-stat-grid{grid-template-columns:1fr;gap:10px;padding:0 18px 14px}
-  .divine-info-card,.divine-actions-card{margin:0 18px 14px}
+  .app-shell{padding:10px}
+  .main-app{height:calc(100dvh - 20px);min-height:calc(100dvh - 20px)}
+  .chat-panel{display:flex;flex-direction:column}
+  .chat-shell{height:100%;min-height:0}
+  .chat-header{padding:12px 14px}
+  .chat-tools-bar{top:72px;padding:8px 14px 10px}
+  .messages-view{padding:12px 12px 110px;gap:10px}
+  .msg-wrapper{max-width:96%}
+  .chat-input-area{grid-template-columns:42px minmax(0,1fr) 42px 42px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));gap:8px}
+  .chat-input-area input[type="text"]{height:44px;font-size:16px}
+  .mobile-tabbar{bottom:calc(10px + env(safe-area-inset-bottom));z-index:40}
+  .main-app[data-mobile-tab="chat"] .mobile-tabbar{display:none}
+  .profile-sheet-card{width:min(100vw - 12px, 460px);bottom:8px}
+  .profile-sheet-hero{min-height:150px;padding:18px}
 }

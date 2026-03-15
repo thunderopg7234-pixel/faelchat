@@ -455,44 +455,16 @@ def login():
 
 @app.route('/search_suggestions')
 def search_suggestions():
-    raw_q = (request.args.get('q') or '').strip()
-    q = raw_q.lower()
-    q_handle = normalize_handle(raw_q)
+    q = normalize_handle(request.args.get('q') or '')
     my_id = normalize_handle(request.args.get('my_id') or '')
-    if not q and not q_handle:
+    if not q:
         return jsonify([])
-    user_like = f'%{q or q_handle}%'
-    handle_like = f'%{q_handle or q}%'
-    users = User.query.filter(
-        or_(
-            db.func.lower(User.tele_id).like(handle_like),
-            db.func.lower(User.username).like(user_like),
-        )
-    ).order_by(
-        db.case(
-            (db.func.lower(User.tele_id) == (q_handle or q), 0),
-            (db.func.lower(User.tele_id).like(f'{q_handle or q}%'), 1),
-            (db.func.lower(User.username) == q, 2),
-            (db.func.lower(User.username).like(f'{q}%'), 3),
-            else_=4,
-        ),
-        User.username.asc(),
+    like_term = f'%{q}%'
+    users = User.query.filter(or_(User.tele_id.ilike(like_term), User.username.ilike(like_term))).order_by(
+        db.case((User.tele_id.ilike(q), 0), (User.tele_id.ilike(f'{q}%'), 1), else_=2), User.username.asc()
     ).limit(8).all()
-    groups = Group.query.filter(
-        or_(
-            db.func.lower(Group.code).like(handle_like),
-            db.func.lower(Group.name).like(user_like),
-            db.func.lower(Group.public_handle).like(handle_like),
-        )
-    ).order_by(
-        db.case(
-            (db.func.lower(Group.code) == (q_handle or q), 0),
-            (db.func.lower(Group.public_handle) == (q_handle or q), 1),
-            (db.func.lower(Group.code).like(f'{q_handle or q}%'), 2),
-            (db.func.lower(Group.name).like(f'{q}%'), 3),
-            else_=4,
-        ),
-        Group.name.asc(),
+    groups = Group.query.filter(or_(Group.code.ilike(like_term), Group.name.ilike(like_term))).order_by(
+        db.case((Group.code.ilike(q), 0), (Group.code.ilike(f'{q}%'), 1), else_=2), Group.name.asc()
     ).limit(8).all()
     results = []
     for user in users:
@@ -646,24 +618,6 @@ def get_history(room):
     messages = Message.query.filter_by(room=room).order_by(Message.timestamp.asc()).all()
     result = [message_payload(msg) for msg in messages]
     return jsonify(result)
-
-
-
-@app.route('/mutual_rooms/<tele_id>')
-def mutual_rooms(tele_id):
-    viewer_id = normalize_handle(request.args.get('viewer_id') or '')
-    tele_id = normalize_handle(tele_id)
-    if not viewer_id or not tele_id:
-        return jsonify({'status': 'success', 'count': 0, 'rooms': []})
-    viewer_rooms = {m.group_code for m in GroupMember.query.filter_by(tele_id=viewer_id).all()}
-    target_rooms = {m.group_code for m in GroupMember.query.filter_by(tele_id=tele_id).all()}
-    shared = list(viewer_rooms & target_rooms)[:10]
-    rooms = []
-    for code in shared:
-        room = Group.query.filter_by(code=code).first()
-        if room:
-            rooms.append({'code': room.code, 'name': room.name, 'kind': room.kind})
-    return jsonify({'status': 'success', 'count': len(viewer_rooms & target_rooms), 'rooms': rooms})
 
 
 @app.route('/profile/<tele_id>')
