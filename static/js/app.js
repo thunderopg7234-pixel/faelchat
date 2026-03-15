@@ -2589,3 +2589,108 @@ openProfileSheet = function(){
 
 // render grid after boot
 setTimeout(()=>{ renderProfileColorGrid(); applyProfileAccent(state.myProfileColor || '#8ec5ff'); }, 30);
+
+
+// ---- In-app notifications + unread badges patch ----
+state.unreadCounts = JSON.parse(localStorage.getItem('fUnreadCounts') || '{}');
+state.inappBannerTimers = {};
+function saveUnreadCounts(){ localStorage.setItem('fUnreadCounts', JSON.stringify(state.unreadCounts || {})); }
+function getChatKey(itemOrId, isGroup){
+  if (typeof itemOrId === 'object' && itemOrId) return currentRoomKeyFor(itemOrId);
+  return `${isGroup ? 'group' : 'dm'}:${itemOrId}`;
+}
+function markCurrentChatRead(){
+  if (!state.currentTargetID) return;
+  const key = getChatKey(state.currentTargetID, state.isCurrentChatGroup);
+  if (state.unreadCounts[key]) {
+    delete state.unreadCounts[key];
+    saveUnreadCounts();
+    renderRecentChats();
+    refreshTabBadges();
+  }
+}
+function totalUnreadCount(){ return Object.values(state.unreadCounts || {}).reduce((a,b)=>a+(Number(b)||0),0); }
+function refreshTabBadges(){
+  const total = totalUnreadCount();
+  document.querySelectorAll('.mobile-tab-btn[data-tab="chats"], .mobile-tab-btn[data-tab="chat"]').forEach((btn)=>{
+    let badge = btn.querySelector('.tab-badge');
+    if (!badge) { badge = document.createElement('span'); badge.className='tab-badge'; btn.appendChild(badge); }
+    if (total > 0) { badge.textContent = total > 99 ? '99+' : String(total); btn.classList.add('has-badge'); }
+    else { badge.textContent=''; btn.classList.remove('has-badge'); }
+  });
+}
+function ensureBannerHost(){
+  let host = byId('top-inapp-stack');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'top-inapp-stack';
+    host.className = 'top-inapp-stack';
+    document.body.appendChild(host);
+  }
+  return host;
+}
+function showInAppBanner(payload){
+  const key = getChatKey(payload.id, payload.is_group);
+  if (state.mutedChats?.has(key)) return;
+  const host = ensureBannerHost();
+  const card = document.createElement('button');
+  card.className = 'inapp-banner';
+  card.type = 'button';
+  card.innerHTML = `<div class="avatar" style="background-image:${payload.pfp ? `url(${payload.pfp})` : 'none'};${(!payload.pfp && payload.profile_color) ? `background-color:${payload.profile_color};` : ''}">${payload.pfp ? '' : escapeHtml(getInitial(payload.name || 'U'))}</div><div class="chat-meta"><strong>${escapeHtml(payload.name || 'New message')}</strong><p>${escapeHtml(payload.preview || 'New message')}</p><small class="mini-muted">Tap to open</small></div>`;
+  card.onclick = async () => {
+    card.remove();
+    await openChat(payload.name, payload.id, payload.pfp || '', payload.is_group, payload.meta || {});
+  };
+  host.appendChild(card);
+  clearTimeout(state.inappBannerTimers[key]);
+  state.inappBannerTimers[key] = setTimeout(() => card.remove(), 3500);
+}
+function updateUnreadForMessage(msg){
+  if (!msg?.room) return;
+  const isGroup = msg.room.startsWith('group_');
+  const targetId = isGroup ? msg.room.replace('group_','') : (msg.sender_id === state.myID ? null : msg.sender_id);
+  if (!targetId) return;
+  const key = getChatKey(targetId, isGroup);
+  if (state.activeRoom === msg.room) return markCurrentChatRead();
+  state.unreadCounts[key] = (state.unreadCounts[key] || 0) + 1;
+  saveUnreadCounts();
+  refreshTabBadges();
+  renderRecentChats();
+  const payload = {
+    id: targetId,
+    is_group: isGroup,
+    name: isGroup ? (state.recentChats.find(c => c.id === targetId && c.is_group)?.name || msg.sender_name || 'Group') : (msg.sender_name || targetId),
+    pfp: state.recentChats.find(c => c.id === targetId && String(c.is_group) === String(isGroup))?.pfp || '',
+    profile_color: state.recentChats.find(c => c.id === targetId && String(c.is_group) === String(isGroup))?.profile_color || '',
+    preview: msg.msg_type === 'text' ? (msg.content || 'New message') : `[${msg.msg_type}]`,
+    meta: state.recentChats.find(c => c.id === targetId && String(c.is_group) === String(isGroup)) || { id: targetId, is_group: isGroup }
+  };
+  showInAppBanner(payload);
+}
+const __prevRenderRecentChatsNotify = renderRecentChats;
+renderRecentChats = function(){
+  __prevRenderRecentChatsNotify();
+  document.querySelectorAll('.recent-chat-shell').forEach((shell)=>{
+    const id = shell.dataset.chatId; const isGroup = shell.dataset.group === '1';
+    const key = getChatKey(id, isGroup);
+    const count = state.unreadCounts[key] || 0;
+    let pill = shell.querySelector('.unread-pill');
+    if (!pill && count > 0) { pill = document.createElement('span'); pill.className='unread-pill'; shell.querySelector('.chat-meta .row-between')?.appendChild(pill); }
+    if (pill) {
+      if (count > 0) { pill.textContent = count > 99 ? '99+' : String(count); }
+      else pill.remove();
+    }
+  });
+  refreshTabBadges();
+};
+const __prevOpenChatNotify = openChat;
+openChat = async function(name,id,pfp,isGroup,meta={}){ await __prevOpenChatNotify(name,id,pfp,isGroup,meta); markCurrentChatRead(); };
+const __prevCloseCurrentChatNotify = closeCurrentChat;
+closeCurrentChat = function(){ __prevCloseCurrentChatNotify(); refreshTabBadges(); };
+const __origSocketNewMessage = socket.listeners && socket.listeners('new_message');
+socket.on('new_message', (data) => {
+  if (data.room === state.activeRoom) renderBubble(data);
+  else updateUnreadForMessage(data);
+  loadRecentChats();
+});
+window.addEventListener('load', refreshTabBadges);
