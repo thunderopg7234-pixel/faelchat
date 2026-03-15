@@ -215,17 +215,31 @@ async function loadRecentChats() {
   });
 }
 
+
+function setSearchDropdownState(active) {
+  const wrap = byId('search-input')?.closest('.search-wrap');
+  if (!wrap) return;
+  wrap.classList.toggle('searching', !!active);
+}
+
 async function doSearch() {
   const q = byId('search-input').value.trim();
   const sug = byId('suggestions');
   if (!q) {
     sug.classList.remove('show');
     sug.innerHTML = '';
+    setSearchDropdownState(false);
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
   const items = await res.json();
   sug.innerHTML = '';
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'suggestion-row';
+    empty.innerHTML = `<div class="chat-meta"><strong>No results</strong><p>Try another name, group, or channel.</p></div>`;
+    sug.appendChild(empty);
+  }
   items.forEach((item) => {
     const row = document.createElement('button');
     row.className = 'suggestion-row';
@@ -235,11 +249,13 @@ async function doSearch() {
     row.onclick = async () => {
       byId('search-input').value = '';
       sug.classList.remove('show');
+      setSearchDropdownState(false);
       await openChat(item.name, item.id, item.pfp, item.type === 'user' ? 'private' : item.type, item);
     };
     sug.appendChild(row);
   });
   sug.classList.add('show');
+  setSearchDropdownState(true);
 }
 
 async function createGroup() {
@@ -510,7 +526,7 @@ socket.on('presence_update', (data) => {
 socket.on('action_error', (data) => showToast(data.message || 'Action failed'));
 
 window.addEventListener('click', (event) => {
-  if (!event.target.closest('.search-wrap')) byId('suggestions').classList.remove('show');
+  if (!event.target.closest('.search-wrap')) { byId('suggestions').classList.remove('show'); setSearchDropdownState(false); }
   if (event.target.classList.contains('modal')) event.target.classList.add('hidden');
 });
 window.addEventListener('beforeunload', () => { if (state.myID) socket.emit('presence_offline', { my_id: state.myID }); });
