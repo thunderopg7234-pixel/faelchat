@@ -272,7 +272,10 @@ async function loadRecentChats() {
     row.dataset.kind = chat.kind;
     row.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.kind, chat);
     row.innerHTML = `
-      <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
+      <div class="avatar-stack">
+        <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
+        ${chat.kind === 'private' && chat.is_online ? '<span class="presence-dot"></span>' : ''}
+      </div>
       <div class="chat-meta">
         <strong>${escapeHtml(chat.name)}</strong>
         <small class="muted">${escapeHtml(chat.kind === 'private' ? formatPresence(chat.is_online, chat.last_seen_at) : kindLabel(chat.kind))}</small>
@@ -320,7 +323,7 @@ async function doSearch() {
     const row = document.createElement('button');
     row.className = 'suggestion-row';
     const subtitle = item.type === 'user' ? formatPresence(item.is_online, item.last_seen_at) : (item.description || kindLabel(item.type));
-    row.innerHTML = `<div class="avatar"></div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
+    row.innerHTML = `<div class="avatar-stack"><div class="avatar"></div>${item.type === 'user' && item.is_online ? '<span class="presence-dot"></span>' : ''}</div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
     setAvatar(row.querySelector('.avatar'), item.name, item.pfp);
     row.onclick = async () => {
       byId('search-input').value = '';
