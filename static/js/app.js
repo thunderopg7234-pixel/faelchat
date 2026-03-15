@@ -2245,3 +2245,347 @@ doSearch = async function(){
     return `<button type="button" class="suggestion-row" data-item="${encodeURIComponent(JSON.stringify(item))}"><div class="avatar-row-wrap"><div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div></div><div class="chat-meta"><strong>${item.type === 'user' ? displayNameWithEmoji(item.name, item.premium_emoji || '') : escapeHtml(item.name)}</strong><p>@${escapeHtml(item.id || '')}</p><small class="muted">${escapeHtml(label)}</small></div></button>`;
   }).join('') : '<div class="empty-mini">No suggestions</div>';
 };
+
+
+// ---- divine patch: no refresh, scrollable theme studio, media crop, slimmer recent list ----
+(function(){
+  let touchStartY = 0;
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length) touchStartY = e.touches[0].clientY;
+  }, {passive:true});
+  document.addEventListener('touchmove', (e) => {
+    const target = e.target.closest('.messages-view, .chat-list, .settings-panel, .modal-card, .theme-grid');
+    if (!target) return;
+    const currentY = e.touches && e.touches.length ? e.touches[0].clientY : 0;
+    const pullingDown = currentY > touchStartY;
+    if (pullingDown && target.scrollTop <= 0) e.preventDefault();
+  }, {passive:false});
+})();
+
+function resolveWallpaperCss(value){
+  if (!value) return WALLPAPERS.aurora;
+  if (WALLPAPERS[value]) return WALLPAPERS[value];
+  if (/^https?:|^\/|^data:image\//.test(value)) return `linear-gradient(rgba(255,255,255,.02), rgba(255,255,255,.02)), url(${value}) center/cover no-repeat`;
+  return value;
+}
+const __prevApplyWallpaperSetting3 = applyWallpaperSetting;
+applyWallpaperSetting = function(value, persist = true){
+  state.wallpaper = value || 'aurora';
+  document.body.style.setProperty('--chat-wallpaper', resolveWallpaperCss(state.wallpaper));
+  if (persist) localStorage.setItem('fWallpaper', state.wallpaper);
+  const picker = byId('wallpaper-picker');
+  if (picker && WALLPAPERS[state.wallpaper]) picker.value = state.wallpaper;
+};
+
+const __prevOpenChat3 = openChat;
+openChat = async function(name, id, pfp, isGroup, meta = {}){
+  await __prevOpenChat3(name, id, pfp, isGroup, meta);
+  state.roomWallpaper = meta.wallpaper || '';
+  if (state.roomWallpaper) {
+    document.body.style.setProperty('--chat-wallpaper', resolveWallpaperCss(state.roomWallpaper));
+  } else {
+    applyWallpaperSetting(state.wallpaper, false);
+  }
+};
+
+const __prevMessageBodyHtml2 = messageBodyHtml;
+messageBodyHtml = function(data){
+  if (data.is_deleted) return '<div class="bubble deleted">Message deleted</div>';
+  const bubbleClass = data.sender_id === state.myID ? 'sent' : 'received';
+  const forwarded = data.forwarded_from ? `<div class="forward-label">Forwarded from ${escapeHtml(data.forwarded_from)}</div>` : '';
+  const reply = data.reply_preview ? `<div class="reply-card"><strong>${escapeHtml(data.reply_preview.sender_name)}</strong><p>${escapeHtml(data.reply_preview.content || '[' + data.reply_preview.msg_type + ']')}</p></div>` : '';
+  const cleanText = (data.content || '').trim();
+  const safeText = cleanText && cleanText !== '[sticker]' ? `<div>${escapeHtml(cleanText).replaceAll('\n', '<br>')}</div>` : '';
+  if (data.msg_type === 'image') return `<div class="bubble ${bubbleClass} image-wrap">${forwarded}${reply}<img class="message-media" src="${data.file_url}" alt="image">${safeText}</div>`;
+  if (data.msg_type === 'video') return `<div class="bubble ${bubbleClass} video-wrap">${forwarded}${reply}<video class="message-media" src="${data.file_url}" controls playsinline></video>${safeText}</div>`;
+  if (data.msg_type === 'audio') return `<div class="bubble ${bubbleClass} audio-wrap">${forwarded}${reply}<audio src="${data.file_url}" controls></audio>${safeText}</div>`;
+  if (data.msg_type === 'file') return `<div class="bubble ${bubbleClass}">${forwarded}${reply}<a class="file-card" href="${data.file_url}" target="_blank"><span>📁</span><span>${escapeHtml(data.content || 'Open file')}</span></a></div>`;
+  return `<div class="bubble ${bubbleClass}">${forwarded}${reply}${safeText}</div>`;
+};
+
+function ensureRoomSettingsEnhancements(){
+  const picker = byId('room-wallpaper-picker');
+  if (picker && !picker.options.length) {
+    picker.innerHTML = Object.keys(WALLPAPERS).map(k => `<option value="${k}">${k[0].toUpperCase()+k.slice(1)}</option>`).join('');
+  }
+}
+const __prevOpenModal2 = openModal;
+openModal = function(id){
+  __prevOpenModal2(id);
+  if (id === 'room-settings-modal') ensureRoomSettingsEnhancements();
+};
+
+const __prevPrefillRoomSettings2 = prefillRoomSettings;
+prefillRoomSettings = function(room={}){
+  __prevPrefillRoomSettings2(room);
+  ensureRoomSettingsEnhancements();
+  const picker = byId('room-wallpaper-picker');
+  if (picker) {
+    if (WALLPAPERS[room.wallpaper || '']) picker.value = room.wallpaper;
+    else picker.value = 'aurora';
+    picker.dataset.currentWallpaper = room.wallpaper || '';
+  }
+};
+
+const __prevSaveRoomSettings3 = saveRoomSettings;
+saveRoomSettings = async function(){
+  const picker = byId('room-wallpaper-picker');
+  const wallpaperValue = (picker?.dataset.currentWallpaper || picker?.value || '').trim();
+  const payload = { code: state.currentTargetID, actor_id: state.myID, public_handle: byId('room-public-handle')?.value.trim(), rules_text: byId('room-rules-text')?.value.trim(), welcome_message: byId('room-welcome-message')?.value.trim(), slow_mode_seconds: byId('room-slow-mode')?.value.trim(), join_approval: byId('room-join-approval')?.value === 'true', is_verified: byId('room-verified')?.value === 'true', wallpaper: wallpaperValue };
+  const res = await fetch('/update_room_settings', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not save room settings');
+  state.roomInviteToken = data.room.invite_token || '';
+  state.roomWallpaper = data.room.wallpaper || '';
+  closeModal('room-settings-modal');
+  await openChat(state.currentTargetName, state.currentTargetID, data.room.pfp || state.currentTargetPFP, state.isCurrentChatGroup, data.room);
+  showToast('Room settings saved');
+};
+
+async function uploadRoomWallpaper(event){
+  const file = event.target.files?.[0];
+  if (!file || !state.currentTargetID) return;
+  const form = new FormData();
+  form.append('photo', file); form.append('code', state.currentTargetID); form.append('actor_id', state.myID);
+  const res = await fetch('/upload_room_wallpaper', { method:'POST', body: form });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Wallpaper upload failed');
+  const picker = byId('room-wallpaper-picker');
+  if (picker) picker.dataset.currentWallpaper = data.url || '';
+  state.roomWallpaper = data.url || '';
+  if (state.roomWallpaper) document.body.style.setProperty('--chat-wallpaper', resolveWallpaperCss(state.roomWallpaper));
+  showToast('Room wallpaper updated');
+  event.target.value = '';
+}
+
+state.mediaCropQueue = state.mediaCropQueue || [];
+function setCropperModeUi(){
+  const primary = byId('crop-primary-btn');
+  const sticker = byId('crop-sticker-btn');
+  const chooser = document.querySelector('#image-crop-card .modal-actions.two:last-child .base-btn.secondary:last-child');
+  if (!primary || !sticker) return;
+  if (state.cropper?.mode === 'media') {
+    primary.textContent = 'Send photo';
+    primary.onclick = sendCroppedMedia;
+    sticker.classList.remove('hidden');
+    if (chooser) { chooser.textContent = 'Choose another'; chooser.onclick = () => byId('media-upload')?.click(); }
+  } else {
+    primary.textContent = 'Save photo';
+    primary.onclick = uploadCroppedPFP;
+    sticker.classList.remove('hidden');
+    if (chooser) { chooser.textContent = 'Choose another'; chooser.onclick = () => byId('pfp-upload')?.click(); }
+  }
+}
+function handleCropPrimaryAction(){
+  if (state.cropper?.mode === 'media') return sendCroppedMedia();
+  return uploadCroppedPFP();
+}
+async function openMediaCropper(file){
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      state.cropper = { mode: 'media', img, fileName: file.name, mimeType: file.type || 'image/jpeg' };
+      byId('crop-zoom').value = '1';
+      byId('crop-x').value = '0';
+      byId('crop-y').value = '0';
+      setCropperModeUi();
+      openModal('image-crop-modal');
+      updateCropper();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function sendCroppedMedia(){
+  if (!state.currentTargetID) return showToast('Open a chat first');
+  const blob = await cropCanvasToBlob('image/jpeg', 0.94);
+  if (!blob) return showToast('Could not crop image');
+  const fd = new FormData();
+  fd.append('file', new File([blob], 'photo.jpg', { type: 'image/jpeg' }));
+  const res = await fetch('/upload', { method:'POST', body: fd });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Upload failed');
+  socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: 'image', content: '', file_url: data.url, reply_to_id: state.replyTo?.id || null });
+  closeImageCropper();
+  showToast('Photo sent');
+}
+const __prevOpenPfpCropper3 = openPfpCropper;
+openPfpCropper = function(event){ __prevOpenPfpCropper3(event); setTimeout(setCropperModeUi, 0); };
+const __prevUploadMedia2 = uploadMedia;
+uploadMedia = async function(event){
+  const files = [...(event.target.files || [])];
+  event.target.value = '';
+  if (!files.length || !state.currentTargetID) return;
+  for (const file of files) {
+    if ((file.type || '').startsWith('image/')) {
+      await openMediaCropper(file);
+      return;
+    }
+    const fd = new FormData(); fd.append('file', file);
+    const res = await fetch('/upload', { method:'POST', body: fd });
+    const data = await res.json();
+    if (data.status !== 'success') { showToast(data.message || 'Upload failed'); continue; }
+    socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.isCurrentChatGroup), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, is_group: state.isCurrentChatGroup, msg_type: data.type, content: data.type === 'file' ? file.name : '', file_url: data.url, reply_to_id: state.replyTo?.id || null });
+  }
+  clearReply();
+};
+
+recentChatRowHtml = function(item) {
+  const kind = item.kind || (item.is_group ? 'group' : 'private');
+  const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'user';
+  const statusText = item.is_group ? `${kind}${item.role ? ` · ${item.role}` : ''}` : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+  const key = currentRoomKeyFor(item);
+  const muted = state.mutedChats.has(key);
+  const pinned = state.pinnedChats.has(key);
+  const active = state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group);
+  const preview = escapeHtml(item.last_msg || statusText || 'No messages yet');
+  const status = escapeHtml(statusText + (muted ? ' · muted' : ''));
+  const meta = encodeURIComponent(JSON.stringify(item));
+  return `
+    <div class="recent-chat-shell ${pinned ? 'pinned-chat' : ''}" data-chat-id="${escapeHtml(item.id)}" data-group="${item.is_group ? '1' : '0'}">
+      <button type="button" class="chat-row compact-row-card ${active ? 'active' : ''}"
+        data-chat-id="${escapeHtml(item.id)}"
+        data-chat-name="${escapeHtml(item.name)}"
+        data-chat-pfp="${escapeHtml(item.pfp || '')}"
+        data-chat-group="${item.is_group ? '1' : '0'}"
+        data-chat-meta="${meta}">
+        <div class="avatar-row-wrap">
+          <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="chat-meta compact-chat-meta">
+          <div class="row-between compact-row-between">
+            <strong>${item.is_group ? escapeHtml(item.name) : displayNameWithEmoji(item.name, item.premium_emoji || '')}</strong>
+            <small>${formatTime(item.time)}</small>
+          </div>
+          <p class="chat-preview-line">${preview}</p>
+        </div>
+      </button>
+      ${recentDeleteButtonHtml(item)}
+    </div>`;
+};
+
+// ---- Divine settings collapsing hero patch ----
+const PROFILE_COLOR_PRESETS = [
+  ['#8ec5ff','#d3f0ff'], ['#f472b6','#ffd0ea'], ['#7c3aed','#22d3ee'], ['#10b981','#9cf9d7'],
+  ['#f97316','#ffd8b3'], ['#ef4444','#fecaca'], ['#0f172a','#334155'], ['#d4a84f','#f6e3a8']
+];
+
+function hexToRgb(hex){
+  const v = String(hex||'').replace('#','');
+  const s = v.length===3 ? v.split('').map(c=>c+c).join('') : v;
+  const n = parseInt(s || '000000', 16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+function rgbToHex(r,g,b){ return '#' + [r,g,b].map(v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join(''); }
+function mixHex(a,b,t){ const A=hexToRgb(a), B=hexToRgb(b); return rgbToHex(A.r+(B.r-A.r)*t, A.g+(B.g-A.g)*t, A.b+(B.b-A.b)*t); }
+function lightenHex(hex, amount=.35){ return mixHex(hex, '#ffffff', amount); }
+function darkenHex(hex, amount=.18){ return mixHex(hex, '#000000', amount); }
+function applyProfileAccent(color){
+  const base = color || state.myProfileColor || '#8ec5ff';
+  const soft = lightenHex(base, .36);
+  document.documentElement.style.setProperty('--profile-accent', base);
+  document.documentElement.style.setProperty('--profile-accent-2', soft);
+  const hero = byId('settings-hero-bg');
+  if (hero) hero.style.background = `radial-gradient(120px 120px at 20% 20%, rgba(255,255,255,.25), transparent 60%), radial-gradient(180px 180px at 80% 18%, rgba(255,255,255,.18), transparent 62%), linear-gradient(180deg, ${soft}, ${base})`;
+}
+async function syncProfileColor(){
+  if (!state.myID) return;
+  try {
+    await fetch('/update_profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tele_id: state.myID, username: state.myName, bio: state.myBio || '', theme: state.myTheme, status_text: state.myStatusText || '', profile_music: state.myProfileMusic || '', mood: state.myMood || '', birthday: state.myBirthday || '', banner_url: state.myBannerUrl || '', profile_color: state.myProfileColor || '#8ec5ff', premium_emoji: state.myPremiumEmoji || '', privacy_last_seen: state.privacyLastSeen })});
+  } catch(e){}
+}
+function renderProfileColorGrid(){
+  const grid = byId('profile-color-grid'); if (!grid) return;
+  const colors = [...PROFILE_COLOR_PRESETS, [state.myProfileColor || '#8ec5ff', lightenHex(state.myProfileColor || '#8ec5ff', .4)]];
+  grid.innerHTML = colors.map(([a,b],idx)=>`<button class="theme-card ${state.myProfileColor===a?'active':''}" onclick="pickProfileColor('${a}')"><span class="theme-swatch" style="background:linear-gradient(135deg, ${a}, ${b})"></span><span>${idx===colors.length-1?'Current':'Gradient '+(idx+1)}</span></button>`).join('');
+  if (byId('profile-color-custom')) byId('profile-color-custom').value = state.myProfileColor || '#8ec5ff';
+}
+window.pickProfileColor = function(color){ state.myProfileColor = color; localStorage.setItem('fProfileColor', color); renderProfileColorGrid(); hydrateProfile(); applyProfileAccent(color); };
+window.applyProfileColorCustom = function(){ const val = byId('profile-color-custom')?.value || '#8ec5ff'; pickProfileColor(val); };
+window.saveProfileColorSelection = async function(){ await syncProfileColor(); closeModal('profile-color-modal'); showToast('Profile colour saved'); };
+
+async function extractDominantColorFromUrl(url){
+  return new Promise((resolve)=>{
+    const img = new Image(); img.crossOrigin='anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas'); const size = 32; c.width = size; c.height = size;
+      const ctx = c.getContext('2d', { willReadFrequently:true });
+      ctx.drawImage(img,0,0,size,size);
+      const data = ctx.getImageData(0,0,size,size).data; let r=0,g=0,b=0,count=0;
+      for (let i=0;i<data.length;i+=16){ const a=data[i+3]; if (a<80) continue; r+=data[i]; g+=data[i+1]; b+=data[i+2]; count++; }
+      if (!count) return resolve('#8ec5ff');
+      resolve(rgbToHex(r/count,g/count,b/count));
+    };
+    img.onerror = () => resolve('#8ec5ff');
+    img.src = url;
+  });
+}
+
+const __prevHydrateProfileDivine = hydrateProfile;
+hydrateProfile = function(){
+  __prevHydrateProfileDivine();
+  applyProfileAccent(state.myProfileColor || '#8ec5ff');
+  renderProfileColorGrid();
+  const own = byId('settings-hero-avatar-btn');
+  if (own) own.onclick = () => { byId('pfp-viewer-name').textContent = state.myName || 'Profile photo'; if (!state.myPFP) return showToast('No photo'); byId('pfp-viewer-img').src = state.myPFP; byId('pfp-viewer').classList.remove('hidden'); };
+};
+
+const __prevUploadCroppedPFP = uploadCroppedPFP;
+uploadCroppedPFP = async function(){
+  await __prevUploadCroppedPFP();
+  if (state.myPFP) {
+    const dominant = await extractDominantColorFromUrl(state.myPFP);
+    state.myProfileColor = darkenHex(dominant, .06);
+    localStorage.setItem('fProfileColor', state.myProfileColor);
+    applyProfileAccent(state.myProfileColor);
+    renderProfileColorGrid();
+    await syncProfileColor();
+    hydrateProfile();
+  }
+};
+
+const __prevSaveProfileDivine = saveProfile;
+saveProfile = async function(){
+  await __prevSaveProfileDivine();
+  applyProfileAccent(state.myProfileColor || '#8ec5ff');
+  renderProfileColorGrid();
+};
+
+(function initSettingsHero(){
+  const panel = byId('settings-view');
+  const hero = byId('settings-hero');
+  if (!panel || !hero) return;
+  let raf = null;
+  const onScroll = () => {
+    const t = panel.scrollTop || 0;
+    const collapse = Math.max(0, Math.min(1, t / 170));
+    panel.style.setProperty('--settings-collapse', collapse.toFixed(3));
+    hero.classList.toggle('shrunk', collapse > .78);
+    if (!raf) raf = requestAnimationFrame(()=>{ raf=null; });
+  };
+  panel.addEventListener('scroll', onScroll, { passive:true });
+  let startY = 0;
+  panel.addEventListener('touchstart', e => { if (panel.scrollTop <= 0 && e.touches[0]) startY = e.touches[0].clientY; }, { passive:true });
+  panel.addEventListener('touchmove', e => {
+    if (panel.scrollTop > 0 || !e.touches[0]) { panel.style.setProperty('--settings-stretch', '0'); return; }
+    const delta = Math.max(0, e.touches[0].clientY - startY);
+    panel.style.setProperty('--settings-stretch', Math.min(.9, delta / 180).toFixed(3));
+  }, { passive:true });
+  panel.addEventListener('touchend', () => panel.style.setProperty('--settings-stretch', '0'), { passive:true });
+  onScroll();
+})();
+
+const __prevOpenProfileSheetDivine = openProfileSheet;
+openProfileSheet = function(){
+  __prevOpenProfileSheetDivine();
+  const hero = byId('sheet-hero');
+  if (!hero) return;
+  const base = state.currentTargetColor || state.myProfileColor || '#8ec5ff';
+  const soft = lightenHex(base, .35);
+  hero.style.background = `radial-gradient(120px 120px at 20% 20%, rgba(255,255,255,.22), transparent 60%), radial-gradient(170px 170px at 80% 12%, rgba(255,255,255,.14), transparent 62%), linear-gradient(180deg, ${soft}, ${base})`;
+};
+
+// render grid after boot
+setTimeout(()=>{ renderProfileColorGrid(); applyProfileAccent(state.myProfileColor || '#8ec5ff'); }, 30);

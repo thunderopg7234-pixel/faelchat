@@ -90,28 +90,38 @@
             </section>
 
             <aside id="settings-view" class="settings-panel glass-card">
-                <div class="sidebar-top settings-top">
-                    <div>
-                        <div class="eyebrow">Profile</div>
-                        <h2>Settings</h2>
-                    </div>
-                    <button class="danger-ghost compact-danger" onclick="logout()">Log out</button>
+                <div id="settings-collapsible-nav" class="settings-collapsible-nav">
+                    <button class="profile-nav-btn ghost" onclick="setMobileTab('chats')">←</button>
+                    <strong id="settings-nav-title">Settings</strong>
+                    <button class="profile-nav-btn ghost" onclick="openModal('profile-color-modal')">🎨</button>
                 </div>
 
-                <div class="settings-profile-card">
-                    <div class="settings-profile-head">
-                        <div id="settings-pfp-icon" class="profile-avatar avatar large"></div>
-                        <div>
-                            <h3 id="settings-fullname">Display Name</h3>
-                            <p id="settings-id">@username</p>
-                            <small id="settings-bio">No bio yet</small>
-                        </div>
+                <div id="settings-hero" class="settings-hero">
+                    <div id="settings-hero-bg" class="settings-hero-bg"></div>
+                    <div class="settings-hero-topbar">
+                        <button class="profile-nav-btn ghost" onclick="openModal('profile-color-modal')">⌘</button>
+                        <button class="profile-nav-btn ghost" onclick="openModal('profile-modal')">Edit</button>
                     </div>
-                    <div class="settings-btn-row compact-row">
+                    <button id="settings-hero-avatar-btn" class="settings-hero-avatar-btn" onclick="openProfileAvatar()">
+                        <div id="settings-pfp-icon" class="profile-avatar avatar large"></div>
+                    </button>
+                    <div class="settings-hero-meta">
+                        <h3 id="settings-fullname">Display Name</h3>
+                        <p id="settings-id">@username</p>
+                        <small id="settings-bio">No bio yet</small>
+                    </div>
+                    <div class="settings-hero-actions">
                         <button class="base-btn secondary compact-btn" onclick="document.getElementById('pfp-upload').click()">Photo</button>
+                        <button class="base-btn secondary compact-btn" onclick="openModal('profile-color-modal')">Colour</button>
                         <button class="base-btn secondary compact-btn" onclick="openModal('profile-modal')">Edit</button>
                     </div>
                     <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="openPfpCropper(event)">
+                </div>
+
+                <div class="telegram-card settings-accounts-card">
+                    <button class="telegram-row" onclick="openModal('profile-color-modal')"><span class="row-icon pink">🎨</span><span>Change Profile Colour</span></button>
+                    <button class="telegram-row" onclick="document.getElementById('pfp-upload').click()"><span class="row-icon pink">📸</span><span>Change Profile Photo</span></button>
+                    <button class="telegram-row" onclick="openModal('profile-modal')"><span class="row-icon pink">✏️</span><span>Edit Profile</span></button>
                 </div>
 
                 <div class="telegram-card">
@@ -120,9 +130,24 @@
                     <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
                     <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
                     <button class="telegram-row" onclick="openArchivedManager()"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
-                    <button class="telegram-row" onclick="deleteCurrentAccount()"><span class="row-icon pink">⊘</span><span>Delete account</span></button><button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log out</span></button>
+                    <button class="telegram-row" onclick="deleteCurrentAccount()"><span class="row-icon pink">⊘</span><span>Delete account</span></button>
+                    <button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log out</span></button>
                 </div>
             </aside>
+
+            <div id="profile-color-modal" class="modal hidden modal-scrollable">
+                <div class="modal-card glass-card">
+                    <div class="modal-top"><h3>Profile colour</h3><button class="icon-btn" onclick="closeModal('profile-color-modal')">✕</button></div>
+                    <div id="profile-color-grid" class="theme-grid profile-color-grid"></div>
+                    <div class="divider-space"></div>
+                    <label class="modal-label">Custom colour</label>
+                    <input id="profile-color-custom" class="base-input" type="color" value="#8ec5ff">
+                    <div class="modal-actions two">
+                        <button class="base-btn secondary" onclick="applyProfileColorCustom()">Preview</button>
+                        <button class="base-btn" onclick="saveProfileColorSelection()">Save colour</button>
+                    </div>
+                </div>
+            </div>
         </main>
 
         <nav class="mobile-tabbar glass-card hidden" id="mobile-tabbar">
@@ -166,7 +191,7 @@
         </div>
     </div>
 
-    <div id="theme-modal" class="modal hidden">
+    <div id="theme-modal" class="modal hidden modal-scrollable">
         <div class="modal-card glass-card">
             <div class="modal-top"><h3>Theme Studio</h3><button class="icon-btn" onclick="closeModal('theme-modal')">✕</button></div>
             <div class="theme-grid" id="theme-grid"></div>
@@ -264,7 +289,7 @@
     </div>
 
     <div id="image-crop-modal" class="modal hidden">
-        <div class="modal-card glass-card wide cropper-card">
+        <div class="modal-card glass-card wide cropper-card" id="image-crop-card">
             <div class="modal-top"><h3>Crop photo</h3><button class="icon-btn" onclick="closeImageCropper()">✕</button></div>
             <div class="cropper-stage"><canvas id="cropper-canvas" width="512" height="512"></canvas></div>
             <div class="cropper-controls">
@@ -274,10 +299,10 @@
             </div>
             <div class="modal-actions two">
                 <button class="base-btn secondary" onclick="closeImageCropper()">Cancel</button>
-                <button class="base-btn" onclick="uploadCroppedPFP()">Save photo</button>
+                <button id="crop-primary-btn" class="base-btn" onclick="handleCropPrimaryAction()">Save photo</button>
             </div>
             <div class="modal-actions two">
-                <button class="base-btn secondary" onclick="sendCroppedSticker()">Send as sticker</button>
+                <button id="crop-sticker-btn" class="base-btn secondary" onclick="sendCroppedSticker()">Send as sticker</button>
                 <button class="base-btn secondary" onclick="document.getElementById('pfp-upload')?.click()">Choose another</button>
             </div>
         </div>
@@ -336,7 +361,7 @@
 
 
     <div id="saved-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Saved Messages</h3><button class="icon-btn" onclick="closeModal('saved-modal')">✕</button></div><div id="saved-list" class="forward-list"></div></div></div>
-    <div id="room-settings-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Room Settings</h3><button class="icon-btn" onclick="closeModal('room-settings-modal')">✕</button></div><label class="modal-label">Public handle</label><input id="room-public-handle" class="base-input" placeholder="public handle"><label class="modal-label">Rules page</label><textarea id="room-rules-text" class="base-input textarea" placeholder="Rules before joining"></textarea><label class="modal-label">Welcome message</label><input id="room-welcome-message" class="base-input" placeholder="Welcome message"><label class="modal-label">Slow mode seconds</label><input id="room-slow-mode" class="base-input" inputmode="numeric" placeholder="0"><label class="modal-label">Join requests approval</label><select id="room-join-approval" class="base-input"><option value="false">Off</option><option value="true">Require approval</option></select><label class="modal-label">Verification badge</label><select id="room-verified" class="base-input"><option value="false">Normal</option><option value="true">Verified</option></select><div class="modal-actions two"><button class="base-btn secondary" onclick="openJoinRequests()">Join Requests</button><button class="base-btn" onclick="saveRoomSettings()">Save Room</button></div></div></div>
+    <div id="room-settings-modal" class="modal hidden modal-scrollable"><div class="modal-card glass-card wide room-settings-card"><div class="modal-top"><h3>Room Settings</h3><button class="icon-btn" onclick="closeModal('room-settings-modal')">✕</button></div><label class="modal-label">Public handle</label><input id="room-public-handle" class="base-input" placeholder="public handle"><label class="modal-label">Rules page</label><textarea id="room-rules-text" class="base-input textarea" placeholder="Rules before joining"></textarea><label class="modal-label">Welcome message</label><input id="room-welcome-message" class="base-input" placeholder="Welcome message"><label class="modal-label">Slow mode seconds</label><input id="room-slow-mode" class="base-input" inputmode="numeric" placeholder="0"><label class="modal-label">Join requests approval</label><select id="room-join-approval" class="base-input"><option value="false">Off</option><option value="true">Require approval</option></select><label class="modal-label">Verification badge</label><select id="room-verified" class="base-input"><option value="false">Normal</option><option value="true">Verified</option></select><label class="modal-label">Shared room wallpaper</label><select id="room-wallpaper-picker" class="base-input"></select><div class="modal-actions two room-media-actions"><button class="base-btn secondary" type="button" onclick="document.getElementById('room-wallpaper-upload')?.click()">Use own wallpaper</button><button class="base-btn secondary" type="button" onclick="document.getElementById('room-pfp-upload')?.click()">Change room photo</button></div><input type="file" id="room-wallpaper-upload" class="hidden" accept="image/*" onchange="uploadRoomWallpaper(event)"><input type="file" id="room-pfp-upload" class="hidden" accept="image/*" onchange="uploadRoomPfp(event)"><div class="modal-actions two"><button class="base-btn secondary" onclick="openJoinRequests()">Join Requests</button><button class="base-btn" onclick="saveRoomSettings()">Save Room</button></div></div></div>
     <div id="join-requests-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Join Requests</h3><button class="icon-btn" onclick="closeModal('join-requests-modal')">✕</button></div><div id="join-requests-list" class="forward-list"></div></div></div>
     <div id="admin-logs-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Admin Logs</h3><button class="icon-btn" onclick="closeModal('admin-logs-modal')">✕</button></div><div id="admin-logs-list" class="forward-list"></div></div></div>
     <div id="discover-modal" class="modal hidden"><div class="modal-card glass-card wide"><div class="modal-top"><h3>Community Discover</h3><button class="icon-btn" onclick="closeModal('discover-modal')">✕</button></div><div id="discover-list" class="forward-list"></div></div></div>

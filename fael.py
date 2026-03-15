@@ -995,6 +995,24 @@ def upload_room_pfp():
     return jsonify({'status':'success','url': url, 'room': room_meta_for_code(code)})
 
 
+@app.route('/upload_room_wallpaper', methods=['POST'])
+def upload_room_wallpaper():
+    file = request.files.get('photo')
+    code = normalize_handle(request.form.get('code') or '')
+    actor_id = normalize_handle(request.form.get('actor_id') or '')
+    room = Group.query.filter_by(code=code).first()
+    member = GroupMember.query.filter_by(group_code=code, tele_id=actor_id).first()
+    if not room or not member or member.role not in {'owner','admin'}:
+        return json_error('Not allowed', 403)
+    if not file:
+        return json_error('No file selected')
+    url, _kind = save_uploaded_asset(file, 'image')
+    room.wallpaper = url
+    db.session.commit()
+    add_admin_log(code, actor_id, 'updated room wallpaper')
+    return jsonify({'status':'success','url': url, 'room': room_meta_for_code(code)})
+
+
 @app.route('/delete_room', methods=['POST'])
 def delete_room_route():
     data = request.json or {}
