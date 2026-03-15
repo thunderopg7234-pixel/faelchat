@@ -1,6 +1,8 @@
-Flask
-Flask-SocketIO
-Flask-SQLAlchemy
-Werkzeug
-gunicorn
-eventlet
+Flask==3.1.0
+Flask-SQLAlchemy==3.1.1
+Flask-SocketIO==5.3.6
+SQLAlchemy==2.0.36
+Werkzeug==3.1.3
+gunicorn==23.0.0
+eventlet==0.40.3
+psycopg2-binary==2.9.10
