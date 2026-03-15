@@ -57,6 +57,8 @@ const state = {
   myProfileMusic: localStorage.getItem('fProfileMusic') || '',
   myMood: localStorage.getItem('fMood') || '',
   myBirthday: localStorage.getItem('fBirthday') || '',
+  myProfileColor: localStorage.getItem('fProfileColor') || '#8ec5ff',
+  myPremiumEmoji: localStorage.getItem('fPremiumEmoji') || '',
   wallpaper: localStorage.getItem('fWallpaper') || 'aurora',
   bubbleStyle: localStorage.getItem('fBubbleStyle') || 'default',
   compactMode: localStorage.getItem('fCompactMode') === '1',
@@ -85,10 +87,15 @@ function getInitial(name = '?') {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
 
-function setAvatar(el, name, pfp) {
+function setAvatar(el, name, pfp, color = '') {
   if (!el) return;
   el.style.backgroundImage = pfp ? `url(${pfp})` : '';
+  el.style.backgroundColor = !pfp && color ? color : '';
   el.textContent = pfp ? '' : getInitial(name);
+}
+
+function displayNameWithEmoji(name = '', emoji = '') {
+  return `${escapeHtml(name)}${emoji ? ` <span class="premium-emoji">${escapeHtml(emoji)}</span>` : ''}`;
 }
 
 function showToast(message) {
@@ -156,22 +163,26 @@ async function handleAuth() {
   state.myName = data.username;
   state.myPFP = data.pfp || '';
   state.myBio = data.bio || '';
+  state.myProfileColor = data.profile_color || state.myProfileColor;
+  state.myPremiumEmoji = data.premium_emoji || '';
   applyTheme(data.theme || state.myTheme, false);
   localStorage.setItem('fID', state.myID);
   localStorage.setItem('fName', state.myName);
   localStorage.setItem('fPFP', state.myPFP);
   localStorage.setItem('fBio', state.myBio);
   localStorage.setItem('fTheme', state.myTheme);
+  localStorage.setItem('fProfileColor', state.myProfileColor);
+  localStorage.setItem('fPremiumEmoji', state.myPremiumEmoji);
   startSession();
 }
 
 function hydrateProfile() {
-  setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
-  setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
-  byId('settings-fullname').textContent = state.myName;
+  setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP, state.myProfileColor);
+  setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP, state.myProfileColor);
+  byId('settings-fullname').innerHTML = displayNameWithEmoji(state.myName, state.myPremiumEmoji);
   byId('settings-id').textContent = `@${state.myID}`;
   byId('settings-bio').textContent = state.myBio || 'No bio yet';
-  byId('settings-fullname-2').textContent = state.myName;
+  byId('settings-fullname-2').innerHTML = displayNameWithEmoji(state.myName, state.myPremiumEmoji);
   byId('settings-id-2').textContent = `@${state.myID}`;
   byId('edit-display-name').value = state.myName;
   byId('edit-bio').value = state.myBio;
@@ -234,8 +245,8 @@ function formatRelativeStatus(raw) {
 }
 
 function openProfileSheet() {
-  setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP);
-  byId('sheet-name').textContent = state.currentTargetName || 'User';
+  setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP, state.currentTargetColor || '');
+  byId('sheet-name').innerHTML = displayNameWithEmoji(state.currentTargetName || 'User', state.currentTargetPremiumEmoji || '');
   byId('sheet-handle').textContent = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
   byId('sheet-kind').textContent = state.currentTargetKind;
   byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
@@ -273,7 +284,9 @@ async function syncCurrentUser() {
         banner_url: state.myBannerUrl || '',
         profile_music: state.myProfileMusic || '',
         mood: state.myMood || '',
-        birthday: state.myBirthday || ''
+        birthday: state.myBirthday || '',
+        profile_color: state.myProfileColor || '',
+        premium_emoji: state.myPremiumEmoji || ''
       })
     });
   } catch (e) {
@@ -298,6 +311,36 @@ async function startSession() {
 function logout() {
   localStorage.clear();
   location.reload();
+}
+
+async function deleteCurrentAccount(){
+  const password = prompt('Enter your password to delete account');
+  if (!password) return;
+  const res = await fetch('/delete_account',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tele_id:state.myID,password})});
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not delete account');
+  localStorage.clear();
+  location.reload();
+}
+
+async function deleteChatPrompt(id, isGroup){
+  const ok = confirm(isGroup ? 'Delete or leave this room?' : 'Delete this chat for everyone?');
+  if (!ok) return;
+  const res = await fetch('/delete_chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor_id:state.myID,target_id:id,is_group:Boolean(isGroup)})});
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not delete chat');
+  if (state.currentTargetID === id) closeCurrentChat();
+  await loadRecentChats();
+}
+
+async function deleteCurrentRoom(){
+  if (!state.isCurrentChatGroup) return;
+  if (!confirm('Delete this room permanently?')) return;
+  const res = await fetch('/delete_room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:state.currentTargetID,actor_id:state.myID})});
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not delete room');
+  closeCurrentChat();
+  await loadRecentChats();
 }
 
 async function loadRecentChats() {
@@ -329,15 +372,15 @@ function renderRecentChats() {
     return `
       <div class="chat-row ${state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group) ? 'active' : ''}" data-chat-id="${item.id}" data-group="${item.is_group}" onclick="openChat(${JSON.stringify(item.name)}, ${JSON.stringify(item.id)}, ${JSON.stringify(item.pfp || '')}, ${item.is_group}, ${JSON.stringify(item)})">
         <div class="avatar-row-wrap">
-          <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
           ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
         </div>
         <div class="chat-meta">
-          <div class="row-between"><strong>${escapeHtml(item.name)}</strong><small>${formatTime(item.time)}</small></div>
+          <div class="row-between"><strong>${item.is_group ? escapeHtml(item.name) : displayNameWithEmoji(item.name, item.premium_emoji || '')}</strong><small>${formatTime(item.time)}</small></div>
           <p>${escapeHtml(item.last_msg || statusText)}</p>
           <small class="muted">${escapeHtml(statusText)}${muted ? ' · muted' : ''}</small>
         </div>
-        <span class="tag">${badge}${muted ? ' · mute' : ''}</span>
+        <div class="chat-row-actions"><span class="tag">${badge}${muted ? ' · mute' : ''}</span><button class="row-mini-btn" onclick="event.stopPropagation();deleteChatPrompt(${JSON.stringify(''+ '${item.id}')}, ${'${item.is_group}'})">⌫</button></div>
       </div>
     `;
   }).join('');
@@ -354,17 +397,18 @@ async function doSearch() {
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
   const rows = (await res.json()).filter((item) => !(item.type === 'user' && normalizeHandle(item.id || '') === normalizeHandle(state.myID || '')));
   suggestions.classList.add('show');
-  suggestions.innerHTML = rows.length ? rows.map((item) => {
+  const topRows = rows.slice(0,3);
+  suggestions.innerHTML = topRows.length ? topRows.map((item) => {
     const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Read-only by default' : 'Group room');
     const isGroup = item.type !== 'user';
     return `
       <div class="suggestion-row" onclick="chooseSuggestion(${JSON.stringify(item)})">
         <div class="avatar-row-wrap">
-          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
           ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
         </div>
         <div class="chat-meta">
-          <strong>${escapeHtml(item.name)}</strong>
+          <strong>${item.type === 'user' ? displayNameWithEmoji(item.name, item.premium_emoji || '') : escapeHtml(item.name)}</strong>
           <p>${escapeHtml(isGroup ? item.description || item.id : '@' + item.id)}</p>
           <small class="muted">${escapeHtml(label)}</small>
         </div>
@@ -435,30 +479,33 @@ function renderChatPanel(name, pfp, isGroup) {
           </div>
         </div>
         <div class="header-actions">
-          <button class="icon-btn" onclick="openMediaGallery()">🖼️</button>
-          <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
-          <button class="icon-btn" onclick="openModal('theme-modal')">🎨</button>
+          <button class="icon-btn slim-icon" onclick="openMediaGallery()">▣</button>
+          <button class="icon-btn slim-icon" onclick="document.getElementById('media-upload').click()">⌁</button>
+          <button class="icon-btn slim-icon" onclick="toggleHeaderTools()">⋯</button>
         </div>
       </div>
       <div id="pin-banner" class="pin-banner hidden"></div>
       <div id="reply-preview" class="reply-preview hidden"></div>
-      <div class="chat-tools-bar">
+      <div id="header-tools" class="chat-tools-bar hidden">
         <input id="chat-search-input" class="chat-search-input" placeholder="Search in this chat" oninput="filterMessagesInView()">
         <button class="icon-btn" onclick="toggleArchiveCurrentChat()">🗃️</button>
         <button class="icon-btn" onclick="toggleMuteCurrentChat()">🔕</button>
       </div>
       <div id="messages-view" class="messages-view"></div>
       <div class="chat-input-area">
-        <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
+        <button class="attach-btn slim-icon" onclick="document.getElementById('media-upload').click()">＋</button>
         <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
-        <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
+        <button class="attach-btn slim-icon" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">◉</button>
         <input type="text" id="msg-input" placeholder="Type a message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
         <button class="send-btn" onclick="sendMsg()">➤</button>
       </div>
     </div>`;
-  byId('chat-header-name').textContent = name;
-  setAvatar(byId('chat-header-avatar'), name, pfp);
+  byId('chat-header-name').innerHTML = displayNameWithEmoji(name, meta?.premium_emoji || '');
+  setAvatar(byId('chat-header-avatar'), name, pfp, meta?.profile_color || '');
 }
+
+function toggleHeaderTools(){ byId('header-tools')?.classList.toggle('hidden'); }
+
 
 function renderReplyPreview() {
   const box = byId('reply-preview');
@@ -493,6 +540,8 @@ async function openChat(name, id, pfp, isGroup, meta = {}) {
   state.currentTargetName = name;
   state.currentTargetPFP = pfp || '';
   state.currentTargetBio = meta.bio || meta.description || '';
+  state.currentTargetColor = meta.profile_color || '';
+  state.currentTargetPremiumEmoji = meta.premium_emoji || '';
   state.currentTargetKind = meta.kind || (isGroup ? 'group' : 'private');
   state.currentRole = meta.role || 'member';
   state.isCurrentChatGroup = isGroup;
@@ -835,7 +884,7 @@ function openForwardModal(id) {
   const candidates = state.recentChats.filter((chat) => !(chat.id === state.currentTargetID && String(chat.is_group) === String(state.isCurrentChatGroup)));
   list.innerHTML = `<div class="empty-mini">Forwarding: ${escapeHtml(source?.content || '[' + (source?.msg_type || 'message') + ']')}</div>` + candidates.map((item) => `
     <button class="forward-row" onclick="forwardMessageTo(${id}, ${JSON.stringify(item.id)}, ${item.is_group})">
-      <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+      <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
       <div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><p>${escapeHtml(item.kind || (item.is_group ? 'group' : 'private'))}</p></div>
     </button>
   `).join('');
@@ -1137,7 +1186,7 @@ async function saveRoomSettings() { const payload = { code: state.currentTargetI
 function prefillRoomSettings(room) { if (!room) return; byId('room-public-handle').value = room.public_handle || room.code || ''; byId('room-rules-text').value = room.rules_text || ''; byId('room-welcome-message').value = room.welcome_message || ''; byId('room-slow-mode').value = room.slow_mode_seconds || 0; byId('room-join-approval').value = room.join_approval ? 'true' : 'false'; byId('room-verified').value = room.is_verified ? 'true' : 'false'; }
 const _origRenderRecentChats = renderRecentChats; renderRecentChats = function() { _origRenderRecentChats(); const list = byId('chat-list'); if (!list) return; const rows = [...list.querySelectorAll('.chat-row')]; rows.forEach(row => { const id = row.dataset.chatId; const key = `${row.dataset.group === 'true' ? 'group' : 'dm'}:${id}`; if (state.hiddenChats.has(key) && state.listFilter !== 'archived') row.style.display = 'none'; if (state.pinnedChats.has(key)) row.classList.add('pinned-chat'); }); const parent = list; const pinned = rows.filter(r=>r.classList.contains('pinned-chat')); pinned.forEach(r => parent.prepend(r)); }
 const _origHydrateProfile = hydrateProfile; hydrateProfile = function() { _origHydrateProfile(); state.myStatusText && (byId('settings-bio').textContent = state.myStatusText); byId('edit-status-text').value = state.myStatusText || ''; byId('edit-profile-music').value = state.myProfileMusic || ''; byId('edit-mood').value = state.myMood || ''; byId('edit-birthday').value = state.myBirthday || ''; byId('edit-banner-url').value = state.myBannerUrl || ''; };
-const _origSaveProfile = saveProfile; saveProfile = async function() { const username = byId('edit-display-name').value.trim(); const bio = byId('edit-bio').value.trim(); const status_text = byId('edit-status-text').value.trim(); const profile_music = byId('edit-profile-music').value.trim(); const mood = byId('edit-mood').value.trim(); const birthday = byId('edit-birthday').value.trim(); const banner_url = byId('edit-banner-url').value.trim(); const res = await fetch('/update_profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tele_id: state.myID, username, bio, theme: state.myTheme, status_text, profile_music, mood, birthday, banner_url, privacy_last_seen: state.privacyLastSeen })}); const data = await res.json(); if (data.status !== 'success') return showToast(data.message || 'Could not update profile'); state.myName = data.username; state.myBio = data.bio || ''; state.myStatusText = data.status_text || ''; state.myProfileMusic = data.profile_music || ''; state.myMood = data.mood || ''; state.myBirthday = data.birthday || ''; state.myBannerUrl = data.banner_url || ''; localStorage.setItem('fName', state.myName); localStorage.setItem('fBio', state.myBio); localStorage.setItem('fStatusText', state.myStatusText); localStorage.setItem('fProfileMusic', state.myProfileMusic); localStorage.setItem('fMood', state.myMood); localStorage.setItem('fBirthday', state.myBirthday); localStorage.setItem('fBannerUrl', state.myBannerUrl); hydrateProfile(); closeModal('profile-modal'); await loadRecentChats(); showToast('Profile updated'); };
+const _origSaveProfile = saveProfile; saveProfile = async function() { const username = byId('edit-display-name').value.trim(); const bio = byId('edit-bio').value.trim(); const status_text = byId('edit-status-text').value.trim(); const profile_music = byId('edit-profile-music').value.trim(); const mood = byId('edit-mood').value.trim(); const birthday = byId('edit-birthday').value.trim(); const banner_url = byId('edit-banner-url').value.trim(); const profile_color = byId('edit-profile-color').value.trim(); const premium_emoji = byId('edit-premium-emoji').value.trim(); const res = await fetch('/update_profile', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tele_id: state.myID, username, bio, theme: state.myTheme, status_text, profile_music, mood, birthday, banner_url, profile_color, premium_emoji, privacy_last_seen: state.privacyLastSeen })}); const data = await res.json(); if (data.status !== 'success') return showToast(data.message || 'Could not update profile'); state.myName = data.username; state.myBio = data.bio || ''; state.myStatusText = data.status_text || ''; state.myProfileMusic = data.profile_music || ''; state.myMood = data.mood || ''; state.myBirthday = data.birthday || ''; state.myBannerUrl = data.banner_url || ''; state.myProfileColor = data.profile_color || '#8ec5ff'; state.myPremiumEmoji = data.premium_emoji || ''; localStorage.setItem('fName', state.myName); localStorage.setItem('fBio', state.myBio); localStorage.setItem('fStatusText', state.myStatusText); localStorage.setItem('fProfileMusic', state.myProfileMusic); localStorage.setItem('fMood', state.myMood); localStorage.setItem('fBirthday', state.myBirthday); localStorage.setItem('fBannerUrl', state.myBannerUrl); localStorage.setItem('fProfileColor', state.myProfileColor); localStorage.setItem('fPremiumEmoji', state.myPremiumEmoji); hydrateProfile(); closeModal('profile-modal'); await loadRecentChats(); showToast('Profile updated'); };
 const _origStartSession = startSession; startSession = async function() { await _origStartSession(); byId('floating-fab').classList.remove('hidden'); document.body.classList.toggle('compact-mode', state.compactMode); document.body.classList.toggle('amoled-mode', state.amoledMode); applyWallpaperSetting(state.wallpaper, false); applyBubbleStyle(state.bubbleStyle, false); const picker = byId('wallpaper-picker'); if (picker && !picker.options.length) { ['aurora','ocean','sunset','void','sakura'].forEach(k => picker.insertAdjacentHTML('beforeend', `<option value="${k}">${k[0].toUpperCase()+k.slice(1)}</option>`)); picker.value = state.wallpaper; } const sd = byId('self-destruct-seconds'); if (sd) sd.value = String(state.selfDestructSeconds || 0); const hp = byId('hidden-passcode'); if (hp) hp.value = state.hiddenPasscode || ''; const settingsCard = document.querySelector('.telegram-card'); if (settingsCard && !document.getElementById('extra-settings-hook')) { settingsCard.insertAdjacentHTML('beforeend', `<button id="extra-settings-hook" class="telegram-row" onclick="openSavedMessages()"><span class="row-icon pink">💾</span><span>Saved Messages</span></button><button class="telegram-row" onclick="openDiscover()"><span class="row-icon pink">🌐</span><span>Community Discover</span></button>`); } };
 const _origRenderChatPanel = renderChatPanel; renderChatPanel = function(name,pfp,isGroup){ _origRenderChatPanel(name,pfp,isGroup); const tools = document.querySelector('.chat-tools-bar'); if (tools && !document.getElementById('chat-search-filter')) { tools.insertAdjacentHTML('beforeend', `<select id="chat-search-filter" class="chat-search-input mini-select" onchange="filterMessagesInView()"><option value="all">All</option><option value="media">Media</option><option value="links">Links</option><option value="files">Files</option><option value="voice">Voice</option></select><button class="icon-btn" onclick="togglePinChat()">📌</button><button class="icon-btn" onclick="openSavedMessages()">💾</button><button class="icon-btn" onclick="openModal('sticker-modal')">✨</button>`); } const area = document.querySelector('.chat-input-area'); if (area && !document.getElementById('schedule-send-btn')) { area.insertAdjacentHTML('beforeend', `<button id="schedule-send-btn" class="attach-btn" onclick="scheduleCurrentMessage()">⏱</button>`); } const actions = document.querySelector('.header-actions'); if (actions && isGroup && !document.getElementById('room-settings-btn')) { actions.insertAdjacentHTML('beforeend', `<button id="room-settings-btn" class="icon-btn" onclick="openModal('room-settings-modal'); prefillRoomSettings({ public_handle: state.currentTargetID, rules_text: state.currentTargetBio, welcome_message: '', slow_mode_seconds: 0, join_approval: false, is_verified: false });">🛠</button><button class="icon-btn" onclick="openAdminLogs()">📜</button>`); } };
 const _origOpenChat = openChat; openChat = async function(name,id,pfp,isGroup,meta={}) { await _origOpenChat(name,id,pfp,isGroup,meta); if (isGroup) { try { const res = await fetch(`/room_meta/${encodeURIComponent(id)}`); const data = await res.json(); if (data.status === 'success') { prefillRoomSettings(data.room); if (data.room.rules_text && !sessionStorage.getItem(`rulesSeen:${id}`)) { alert(`Rules for ${name}:\n\n${data.room.rules_text}`); sessionStorage.setItem(`rulesSeen:${id}`,'1'); } } } catch (e) {} } };
@@ -1198,15 +1247,15 @@ function recentChatRowHtml(item) {
       data-chat-group="${item.is_group ? '1' : '0'}"
       data-chat-meta="${encodeURIComponent(JSON.stringify(item))}">
       <div class="avatar-row-wrap">
-        <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+        <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
         ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
       </div>
       <div class="chat-meta">
-        <div class="row-between"><strong>${escapeHtml(item.name)}</strong><small>${formatTime(item.time)}</small></div>
+        <div class="row-between"><strong>${item.is_group ? escapeHtml(item.name) : displayNameWithEmoji(item.name, item.premium_emoji || '')}</strong><small>${formatTime(item.time)}</small></div>
         <p>${escapeHtml(item.last_msg || statusText)}</p>
         <small class="muted">${escapeHtml(statusText)}${muted ? ' · muted' : ''}</small>
       </div>
-      <span class="tag">${badge}${muted ? ' · mute' : ''}</span>
+      <div class="chat-row-actions"><span class="tag">${badge}${muted ? ' · mute' : ''}</span><button class="row-mini-btn" onclick="event.stopPropagation();deleteChatPrompt(${JSON.stringify(''+ '${item.id}')}, ${'${item.is_group}'})">⌫</button></div>
     </button>`;
 }
 
@@ -1242,7 +1291,8 @@ doSearch = async function() {
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
   const rows = (await res.json()).filter((item) => !(item.type === 'user' && normalizeHandle(item.id || '') === normalizeHandle(state.myID || '')));
   suggestions.classList.add('show');
-  suggestions.innerHTML = rows.length ? rows.map((item) => {
+  const topRows = rows.slice(0,3);
+  suggestions.innerHTML = topRows.length ? topRows.map((item) => {
     const label = item.type === 'user'
       ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'))
       : (item.type === 'channel' ? 'Read-only channel' : 'Group room');
@@ -1251,7 +1301,7 @@ doSearch = async function() {
       <button type="button" class="suggestion-row"
         data-item="${encodeURIComponent(JSON.stringify(item))}">
         <div class="avatar-row-wrap">
-          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          <div class="avatar" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
           ${item.type === 'user' && item.online ? '<span class="online-dot"></span>' : ''}
         </div>
         <div class="chat-meta">
@@ -1368,7 +1418,7 @@ renderChatPanel = function(name, pfp, isGroup) {
       <button class="attach-btn" onclick="document.getElementById('media-upload').click()">📎</button>
       <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
       <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
-      <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
+      <button class="attach-btn slim-icon" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">◉</button>
       <button class="send-btn" onclick="sendMsg()">➤</button>`;
   }
   const header = document.querySelector('.chat-header-left');
@@ -1538,13 +1588,16 @@ renderChatPanel = function(name, pfp, isGroup) {
         <button class="attach-btn" onclick="document.getElementById('media-upload').click()">📎</button>
         <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
         <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
-        <button class="attach-btn" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">🎤</button>
+        <button class="attach-btn slim-icon" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">◉</button>
         <button class="send-btn" onclick="sendMsg()">➤</button>
       </div>
     </div>`;
-  byId('chat-header-name').textContent = name;
-  setAvatar(byId('chat-header-avatar'), name, pfp);
-};
+  byId('chat-header-name').innerHTML = displayNameWithEmoji(name, meta?.premium_emoji || '');
+  setAvatar(byId('chat-header-avatar'), name, pfp, meta?.profile_color || '');
+}
+
+function toggleHeaderTools(){ byId('header-tools')?.classList.toggle('hidden'); }
+;
 
 function toggleHeaderDrawer(event, forceClose = false) {
   event?.stopPropagation();
@@ -1560,6 +1613,8 @@ openChat = async function(name, id, pfp, isGroup, meta = {}) {
   state.currentTargetName = name;
   state.currentTargetPFP = pfp || '';
   state.currentTargetBio = meta.bio || meta.description || '';
+  state.currentTargetColor = meta.profile_color || '';
+  state.currentTargetPremiumEmoji = meta.premium_emoji || '';
   state.currentTargetKind = meta.kind || (isGroup ? 'group' : 'private');
   state.currentRole = meta.role || 'member';
   state.isCurrentChatGroup = isGroup;
@@ -1675,3 +1730,100 @@ bindDivineTapHandlers = function() {
 };
 
 window.addEventListener('load', bindDivineTapHandlers);
+
+
+let _lastTouchEnd = 0; document.addEventListener('touchend', (event) => { const now = Date.now(); if (now - _lastTouchEnd <= 300) event.preventDefault(); _lastTouchEnd = now; }, {passive:false});
+
+
+// ---- final compact telegram patch ----
+function recentRowDeleteButton(item){
+  return `<button class="row-mini-btn" onclick="event.stopPropagation();deleteChatPrompt(${JSON.stringify(item.id)}, ${item.is_group ? 'true' : 'false'})">⌫</button>`;
+}
+recentChatRowHtml = function(item) {
+  const kind = item.kind || (item.is_group ? 'group' : 'private');
+  const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'user';
+  const statusText = item.is_group ? `${kind}${item.role ? ` · ${item.role}` : ''}` : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+  const key = currentRoomKeyFor(item);
+  const muted = state.mutedChats.has(key);
+  const pinned = state.pinnedChats.has(key);
+  return `
+    <button type="button" class="chat-row ${pinned ? 'pinned-chat' : ''} ${state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group) ? 'active' : ''}"
+      data-chat-id="${escapeHtml(item.id)}"
+      onclick='openChat(${JSON.stringify(item.name)}, ${JSON.stringify(item.id)}, ${JSON.stringify(item.pfp || '')}, ${item.is_group ? 'true' : 'false'}, ${JSON.stringify(item)})'>
+      <div class="avatar-row-wrap">
+        <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+        ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
+      </div>
+      <div class="chat-meta">
+        <div class="row-between"><strong>${item.is_group ? escapeHtml(item.name) : displayNameWithEmoji(item.name, item.premium_emoji || '')}</strong><small>${formatTime(item.time)}</small></div>
+        <p>${escapeHtml(item.last_msg || statusText)}</p>
+        <small class="muted">${escapeHtml(statusText)}${muted ? ' · muted' : ''}</small>
+      </div>
+      <div class="chat-row-actions"><span class="tag">${badge}${muted ? ' · mute' : ''}</span>${recentRowDeleteButton(item)}</div>
+    </button>`;
+};
+
+renderRecentChats = function(){
+  const list = byId('chat-list'); if (!list) return;
+  const filtered = state.recentChats.filter((item) => {
+    const key = currentRoomKeyFor(item);
+    const archived = state.archivedChats.has(key);
+    const hidden = state.hiddenChats.has(key);
+    if (hidden) return false;
+    if (state.listFilter === 'archived') return archived;
+    if (archived) return false;
+    if (state.listFilter === 'all') return true;
+    return (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter;
+  }).sort((a,b)=> new Date(b.time||0)-new Date(a.time||0));
+  list.innerHTML = filtered.length ? filtered.map(recentChatRowHtml).join('') : '<div class="empty-mini">No chats yet</div>';
+};
+
+renderChatPanel = function(name, pfp, isGroup) {
+  const panel = byId('chat-panel');
+  panel.className = 'chat-panel glass-card';
+  panel.innerHTML = `
+    <div class="chat-shell">
+      <div class="chat-header">
+        <div class="chat-header-left clickable" onclick="openProfileSheet()">
+          <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
+          <div id="chat-header-avatar" class="avatar"></div>
+          <div class="chat-header-meta">
+            <strong id="chat-header-name"></strong>
+            <p id="chat-status-text">Loading…</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn slim-icon" onclick="openMediaGallery()">▣</button>
+          <button class="icon-btn slim-icon" onclick="document.getElementById('media-upload').click()">⌁</button>
+          <button class="icon-btn slim-icon" onclick="toggleHeaderTools()">⋯</button>
+        </div>
+      </div>
+      <div id="pin-banner" class="pin-banner hidden"></div>
+      <div id="reply-preview" class="reply-preview hidden"></div>
+      <div id="header-tools" class="chat-tools-bar hidden">
+        <input id="chat-search-input" class="chat-search-input" placeholder="Search in this chat" oninput="filterMessagesInView()">
+        <button class="icon-btn slim-icon" onclick="toggleArchiveCurrentChat()">⌗</button>
+        <button class="icon-btn slim-icon" onclick="toggleMuteCurrentChat()">◌</button>
+        ${isGroup ? '<button class="icon-btn slim-icon" onclick="deleteCurrentRoom()">⊘</button>' : ''}
+      </div>
+      <div id="messages-view" class="messages-view"></div>
+      <div class="chat-input-area">
+        <button class="attach-btn slim-icon" onclick="document.getElementById('media-upload').click()">＋</button>
+        <input type="file" id="media-upload" class="hidden" multiple onchange="uploadMedia(event)">
+        <button class="attach-btn slim-icon" onmousedown="startVoiceRecord()" onmouseup="stopVoiceRecord()" ontouchstart="startVoiceRecord()" ontouchend="stopVoiceRecord()">◉</button>
+        <input type="text" id="msg-input" placeholder="Message" oninput="handleTypingInput()" onkeypress="if(event.key==='Enter') sendMsg()">
+        <button class="send-btn" onclick="sendMsg()">➤</button>
+      </div>
+    </div>`;
+  byId('chat-header-name').innerHTML = displayNameWithEmoji(name, state.currentTargetPremiumEmoji || '');
+  setAvatar(byId('chat-header-avatar'), name, pfp, state.currentTargetColor || '');
+};
+
+openProfileSheet = function(){
+  setAvatar(byId('sheet-avatar'), state.currentTargetName, state.currentTargetPFP, state.currentTargetColor || '');
+  byId('sheet-name').innerHTML = displayNameWithEmoji(state.currentTargetName || 'User', state.currentTargetPremiumEmoji || '');
+  byId('sheet-handle').textContent = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
+  byId('sheet-kind').textContent = state.currentTargetKind;
+  byId('sheet-bio').textContent = state.currentTargetBio || 'No description yet';
+  byId('chat-profile-sheet').classList.remove('hidden');
+};

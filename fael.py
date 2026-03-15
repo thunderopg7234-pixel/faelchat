@@ -70,6 +70,8 @@ class User(db.Model):
     profile_music = db.Column(db.String(120), default='')
     mood = db.Column(db.String(60), default='')
     birthday = db.Column(db.String(20), default='')
+    profile_color = db.Column(db.String(32), default='')
+    premium_emoji = db.Column(db.String(16), default='')
 
 
 class Message(db.Model):
@@ -138,6 +140,16 @@ class AdminLog(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
 
+class UploadAsset(db.Model):
+    __tablename__ = 'upload_asset'
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), default='')
+    mime_type = db.Column(db.String(120), default='application/octet-stream')
+    kind = db.Column(db.String(20), default='file')
+    blob = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
 def ensure_schema():
     engine = db.engine
     inspector = inspect(engine)
@@ -161,6 +173,8 @@ def ensure_schema():
     add_column_if_missing('user', 'profile_music', "VARCHAR(120) DEFAULT ''")
     add_column_if_missing('user', 'mood', "VARCHAR(60) DEFAULT ''")
     add_column_if_missing('user', 'birthday', "VARCHAR(20) DEFAULT ''")
+    add_column_if_missing('user', 'profile_color', "VARCHAR(32) DEFAULT ''")
+    add_column_if_missing('user', 'premium_emoji', "VARCHAR(16) DEFAULT ''")
     add_column_if_missing('message', 'edited_at', 'TIMESTAMP')
     add_column_if_missing('message', 'reply_to_id', 'INTEGER')
     add_column_if_missing('message', 'reactions', "TEXT DEFAULT ''")
@@ -232,10 +246,14 @@ def save_upload(file_storage) -> tuple[str, str]:
     if not allowed_file(file_storage.filename):
         raise ValueError('File type not allowed')
     original_name = secure_filename(file_storage.filename)
-    unique_name = f"{uuid.uuid4().hex}_{original_name}"
-    file_path = UPLOAD_DIR / unique_name
-    file_storage.save(file_path)
-    return f'/static/uploads/{unique_name}', get_file_type(original_name)
+    blob = file_storage.read()
+    if not blob:
+        raise ValueError('Empty file')
+    kind = get_file_type(original_name)
+    asset = UploadAsset(filename=original_name, mime_type=(getattr(file_storage, 'mimetype', None) or 'application/octet-stream'), kind=kind, blob=blob)
+    db.session.add(asset)
+    db.session.commit()
+    return f'/asset/{asset.id}', kind
 
 
 def normalize_handle(value: str) -> str:
@@ -408,7 +426,7 @@ def room_meta_for_code(code: str):
     }
 
 
-def upsert_user(tele_id: str, username: str = '', password: str | None = None, pfp: str = '', bio: str = '', theme: str = '', status_text: str = '', banner_url: str = '', profile_music: str = '', mood: str = '', birthday: str = '') -> User | None:
+def upsert_user(tele_id: str, username: str = '', password: str | None = None, pfp: str = '', bio: str = '', theme: str = '', status_text: str = '', banner_url: str = '', profile_music: str = '', mood: str = '', birthday: str = '', profile_color: str = '', premium_emoji: str = '') -> User | None:
     tele_id = normalize_handle(tele_id)
     username = (username or '').strip()
     if not tele_id:
@@ -439,6 +457,10 @@ def upsert_user(tele_id: str, username: str = '', password: str | None = None, p
         user.mood = (mood or '')[:60]
     if birthday is not None:
         user.birthday = (birthday or '')[:20]
+    if profile_color is not None:
+        user.profile_color = (profile_color or '')[:32]
+    if premium_emoji is not None:
+        user.premium_emoji = (premium_emoji or '')[:16]
     user.last_seen_at = datetime.utcnow()
     db.session.commit()
     return user
@@ -461,7 +483,7 @@ def signup():
     if User.query.filter_by(tele_id=tele_id).first():
         return json_error('ID already taken!')
     user = upsert_user(tele_id=tele_id, username=username, password=password)
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or ''})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or '', 'profile_color': user.profile_color or '', 'premium_emoji': user.premium_emoji or ''})
 
 
 @app.route('/login', methods=['POST'])
@@ -507,6 +529,8 @@ def ensure_user_route():
         profile_music=(data.get('profile_music') or '').strip(),
         mood=(data.get('mood') or '').strip(),
         birthday=(data.get('birthday') or '').strip(),
+        profile_color=(data.get('profile_color') or '').strip(),
+        premium_emoji=(data.get('premium_emoji') or '').strip()[:8],
     )
     return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id})
 
@@ -516,87 +540,63 @@ def search_suggestions():
     raw_q = (request.args.get('q') or '').strip()
     q = normalize_handle(raw_q)
     my_id = normalize_handle(request.args.get('my_id') or '')
-    if not raw_q:
+    if len(raw_q) < 1:
         return jsonify([])
 
-    like_raw = f'%{raw_q}%'
-    like_compact = f'%{q}%'
+    raw_like = f"%{raw_q}%"
+    prefix_like = f"{q}%"
 
     users = User.query.filter(
         User.tele_id != my_id,
         or_(
-            User.username.ilike(like_raw),
-            User.username.ilike(like_compact),
-            User.tele_id.ilike(like_compact),
+            User.username.ilike(raw_like),
+            User.tele_id.ilike(prefix_like),
         )
     ).order_by(
         db.case(
             (User.username.ilike(raw_q), 0),
             (User.username.ilike(f'{raw_q}%'), 1),
             (User.tele_id.ilike(q), 2),
-            (User.tele_id.ilike(f'{q}%'), 3),
+            (User.tele_id.ilike(prefix_like), 3),
             else_=4,
         ),
         User.username.asc(),
-        User.tele_id.asc(),
-    ).limit(20).all()
+    ).limit(6).all()
 
     groups = Group.query.filter(
         or_(
-            Group.name.ilike(like_raw),
-            Group.code.ilike(like_compact),
-            Group.public_handle.ilike(like_compact),
-            Group.description.ilike(like_raw),
+            Group.name.ilike(raw_like),
+            Group.code.ilike(prefix_like),
+            Group.public_handle.ilike(prefix_like),
         )
     ).order_by(
         db.case(
             (Group.name.ilike(raw_q), 0),
             (Group.name.ilike(f'{raw_q}%'), 1),
             (Group.public_handle.ilike(q), 2),
-            (Group.public_handle.ilike(f'{q}%'), 3),
+            (Group.public_handle.ilike(prefix_like), 3),
             (Group.code.ilike(q), 4),
-            (Group.code.ilike(f'{q}%'), 5),
-            else_=6,
+            else_=5,
         ),
         Group.name.asc(),
-        Group.code.asc(),
-    ).limit(20).all()
+    ).limit(6).all()
 
     results = []
-    seen_keys = set()
+    joined_codes = {m.group_code for m in GroupMember.query.filter_by(tele_id=my_id).all()} if my_id else set()
     for user in users:
-        key = ('user', user.tele_id)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
         results.append({
-            'type': 'user',
-            'name': user.username or user.tele_id,
-            'id': user.tele_id,
-            'pfp': user.pfp or '',
-            'bio': user.bio or '',
+            'type': 'user', 'name': user.username or user.tele_id, 'id': user.tele_id, 'pfp': user.pfp or '',
+            'bio': user.bio or '', 'profile_color': user.profile_color or '', 'premium_emoji': user.premium_emoji or '',
             **format_user_status(user, my_id)
         })
-
-    joined_codes = {m.group_code for m in GroupMember.query.filter_by(tele_id=my_id).all()} if my_id else set()
     for group in groups:
         if (group.visibility or 'public') == 'private' and group.code not in joined_codes:
             continue
-        key = (group.kind or 'group', group.code)
-        if key in seen_keys:
-            continue
-        seen_keys.add(key)
         results.append({
-            'type': group.kind,
-            'name': group.name,
-            'id': group.code,
-            'pfp': group.pfp or '',
-            'description': group.description or '',
-            'visibility': group.visibility or 'public',
-            'public_handle': group.public_handle or ''
+            'type': group.kind, 'name': group.name, 'id': group.code, 'pfp': group.pfp or '', 'description': group.description or '',
+            'visibility': group.visibility or 'public', 'public_handle': group.public_handle or ''
         })
-
-    return jsonify(results[:24])
+    return jsonify(results[:3])
 
 
 @app.route('/create_room', methods=['POST'])
@@ -689,6 +689,8 @@ def recent_chats(my_id):
             'name': other_user.username,
             'pfp': other_user.pfp or '',
             'bio': other_user.bio or '',
+            'profile_color': other_user.profile_color or '',
+            'premium_emoji': other_user.premium_emoji or '',
             'last_msg': last_msg,
             'time': msg.timestamp.isoformat(),
             'ts': msg.timestamp.timestamp(),
@@ -741,7 +743,7 @@ def profile(tele_id):
     user = User.query.filter_by(tele_id=normalize_handle(tele_id)).first()
     if not user:
         return json_error('User not found', 404)
-    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or '', **format_user_status(user, viewer_id)}
+    payload = {'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or '', 'profile_color': user.profile_color or '', 'premium_emoji': user.premium_emoji or '', **format_user_status(user, viewer_id)}
     return jsonify(payload)
 
 
@@ -766,6 +768,8 @@ def update_profile():
     profile_music = (data.get('profile_music') or '').strip()[:120]
     mood = (data.get('mood') or '').strip()[:60]
     birthday = (data.get('birthday') or '').strip()[:20]
+    profile_color = (data.get('profile_color') or '').strip()[:32]
+    premium_emoji = (data.get('premium_emoji') or '').strip()[:8]
     if not tele_id or not username:
         return json_error('Fill all fields')
     user = User.query.filter_by(tele_id=tele_id).first()
@@ -782,8 +786,10 @@ def update_profile():
     user.profile_music = profile_music
     user.mood = mood
     user.birthday = birthday
+    user.profile_color = profile_color
+    user.premium_emoji = premium_emoji
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or ''})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or '', 'profile_color': user.profile_color or '', 'premium_emoji': user.premium_emoji or ''})
 
 
 @app.route('/upload', methods=['POST'])
@@ -819,6 +825,15 @@ def upload():
     return jsonify({'status': 'success', 'url': file_url, 'type': detected_type})
 
 
+
+
+@app.route('/asset/<int:asset_id>')
+def asset_file(asset_id):
+    from flask import Response
+    asset = UploadAsset.query.get(asset_id)
+    if not asset:
+        return json_error('Asset not found', 404)
+    return Response(asset.blob, mimetype=asset.mime_type, headers={'Content-Disposition': f'inline; filename={asset.filename}'})
 
 
 @app.route('/media_gallery/<path:room>')
@@ -937,6 +952,66 @@ def admin_logs(code):
         return json_error('Not allowed', 403)
     logs = AdminLog.query.filter_by(group_code=code).order_by(AdminLog.created_at.desc()).limit(100).all()
     return jsonify({'status':'success','logs':[{'actor_id': log.actor_id, 'action': log.action, 'created_at': log.created_at.isoformat()} for log in logs]})
+
+@app.route('/delete_chat', methods=['POST'])
+def delete_chat_route():
+    data = request.json or {}
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    target_id = normalize_handle(data.get('target_id') or '')
+    is_group = bool(data.get('is_group'))
+    if not actor_id or not target_id:
+        return json_error('Missing chat')
+    room = make_room(actor_id, target_id, is_group)
+    if is_group:
+        member = GroupMember.query.filter_by(group_code=target_id, tele_id=actor_id).first()
+        if member:
+            db.session.delete(member)
+            db.session.commit()
+        return jsonify({'status':'success'})
+    Message.query.filter_by(room=room).delete()
+    db.session.commit()
+    return jsonify({'status':'success'})
+
+
+@app.route('/delete_room', methods=['POST'])
+def delete_room_route():
+    data = request.json or {}
+    code = normalize_handle(data.get('code') or '')
+    actor_id = normalize_handle(data.get('actor_id') or '')
+    room = Group.query.filter_by(code=code).first()
+    if not room or room.owner_id != actor_id:
+        return json_error('Not allowed', 403)
+    Message.query.filter_by(room=f'group_{code}').delete()
+    GroupMember.query.filter_by(group_code=code).delete()
+    JoinRequest.query.filter_by(group_code=code).delete()
+    AdminLog.query.filter_by(group_code=code).delete()
+    db.session.delete(room)
+    db.session.commit()
+    return jsonify({'status':'success'})
+
+
+@app.route('/delete_account', methods=['POST'])
+def delete_account_route():
+    data = request.json or {}
+    tele_id = normalize_handle(data.get('tele_id') or '')
+    password = (data.get('password') or '').strip()
+    user = User.query.filter_by(tele_id=tele_id).first()
+    if not user or user.password != password:
+        return json_error('Wrong password', 403)
+    Message.query.filter(Message.sender_id == tele_id).delete()
+    GroupMember.query.filter_by(tele_id=tele_id).delete()
+    JoinRequest.query.filter_by(tele_id=tele_id).delete()
+    owned_rooms = Group.query.filter_by(owner_id=tele_id).all()
+    for room in owned_rooms:
+        Message.query.filter_by(room=f'group_{room.code}').delete()
+        GroupMember.query.filter_by(group_code=room.code).delete()
+        JoinRequest.query.filter_by(group_code=room.code).delete()
+        AdminLog.query.filter_by(group_code=room.code).delete()
+        db.session.delete(room)
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'status':'success'})
+
 
 @app.route('/block_user', methods=['POST'])
 def block_user():

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#06131f" />
     <title>FaelChat Ultra Fusion</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -95,7 +95,7 @@
                         <div class="eyebrow">Profile</div>
                         <h2>Settings</h2>
                     </div>
-                    <button class="danger-ghost" onclick="logout()">Logout</button>
+                    <button class="danger-ghost compact-danger" onclick="logout()">Log out</button>
                 </div>
 
                 <div class="settings-profile-card">
@@ -107,9 +107,9 @@
                             <small id="settings-bio">No bio yet</small>
                         </div>
                     </div>
-                    <div class="settings-btn-row">
-                        <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
-                        <button class="base-btn secondary" onclick="openModal('profile-modal')">Edit profile</button>
+                    <div class="settings-btn-row compact-row">
+                        <button class="base-btn secondary compact-btn" onclick="document.getElementById('pfp-upload').click()">Photo</button>
+                        <button class="base-btn secondary compact-btn" onclick="openModal('profile-modal')">Edit</button>
                     </div>
                     <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="openPfpCropper(event)">
                 </div>
@@ -120,7 +120,7 @@
                     <button class="telegram-row" onclick="openModal('room-modal')"><span class="row-icon pink">📢</span><span>Create Group or Channel</span></button>
                     <button class="telegram-row" onclick="loadRecentChats()"><span class="row-icon pink">↻</span><span>Refresh recent chats</span></button>
                     <button class="telegram-row" onclick="setListFilter('archived', document.querySelector('.chip[data-filter=\'archived\']'))"><span class="row-icon pink">🗃️</span><span>Archived chats</span></button>
-                    <button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log Out</span></button>
+                    <button class="telegram-row" onclick="deleteCurrentAccount()"><span class="row-icon pink">⊘</span><span>Delete account</span></button><button class="telegram-row" onclick="logout()"><span class="row-icon pink">⇥</span><span>Log out</span></button>
                 </div>
 
                 <div class="telegram-card account-card">
@@ -140,9 +140,9 @@
         </main>
 
         <nav class="mobile-tabbar glass-card hidden" id="mobile-tabbar">
-            <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')"><span class="mobile-tab-ico">💬</span><span>Chats</span></button>
-            <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')"><span class="mobile-tab-ico">🗨️</span><span>Open Chat</span></button>
-            <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')"><span class="mobile-tab-ico">⚙️</span><span>Settings</span></button>
+            <button id="tab-btn-chats" class="mobile-tab-btn active" onclick="setMobileTab('chats')"><span class="mobile-tab-ico">◌</span><span>Chats</span></button>
+            <button id="tab-btn-chat" class="mobile-tab-btn" onclick="setMobileTab('chat')"><span class="mobile-tab-ico">◔</span><span>Chat</span></button>
+            <button id="tab-btn-settings" class="mobile-tab-btn" onclick="setMobileTab('settings')"><span class="mobile-tab-ico">◎</span><span>Settings</span></button>
         </nav>
     </div>
 
@@ -173,6 +173,8 @@
             <input id="edit-profile-music" class="base-input" placeholder="Profile music / mood song">
             <input id="edit-mood" class="base-input" placeholder="Mood">
             <input id="edit-birthday" class="base-input" placeholder="Birthday e.g. 15 Mar">
+            <input id="edit-profile-color" class="base-input" type="color" value="#8ec5ff">
+            <select id="edit-premium-emoji" class="base-input"><option value="">No premium emoji</option><option>✨</option><option>💎</option><option>🔥</option><option>🪽</option><option>🌙</option><option>🦋</option><option>👑</option></select>
             <input id="edit-banner-url" class="base-input" placeholder="Profile banner image URL">
             <button class="base-btn" onclick="saveProfile()">Save Changes</button>
         </div>
