@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import eventlet
+
 eventlet.monkey_patch()
 
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO, emit, join_room
-from sqlalchemy import or_
+from sqlalchemy import inspect, or_, text
 from werkzeug.utils import secure_filename
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -40,9 +41,10 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'fael_super_secret')
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_DIR)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
-
 db = SQLAlchemy(app)
 socketio = SocketIO(app, cors_allowed_origins='*', max_http_buffer_size=100 * 1024 * 1024, async_mode='eventlet')
+
+active_users: dict[str, set[str]] = {}
 
 
 class User(db.Model):
@@ -51,6 +53,9 @@ class User(db.Model):
     tele_id = db.Column(db.String(50), unique=True, nullable=False, index=True)
     password = db.Column(db.String(50), nullable=False)
     pfp = db.Column(db.String(255), default='')
+    bio = db.Column(db.String(280), default='')
+    is_online = db.Column(db.Boolean, default=False, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
 
 
 class Message(db.Model):
@@ -70,6 +75,8 @@ class Group(db.Model):
     name = db.Column(db.String(100), nullable=False)
     code = db.Column(db.String(50), unique=True, nullable=False, index=True)
     pfp = db.Column(db.String(255), default='')
+    description = db.Column(db.String(280), default='')
+    owner_id = db.Column(db.String(50), default='')
 
 
 class GroupMember(db.Model):
@@ -78,8 +85,41 @@ class GroupMember(db.Model):
     tele_id = db.Column(db.String(50), nullable=False, index=True)
 
 
-with app.app_context():
+class Channel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    code = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    pfp = db.Column(db.String(255), default='')
+    description = db.Column(db.String(280), default='')
+    owner_id = db.Column(db.String(50), nullable=False, index=True)
+
+
+class ChannelMember(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    channel_code = db.Column(db.String(50), nullable=False, index=True)
+    tele_id = db.Column(db.String(50), nullable=False, index=True)
+
+
+def ensure_schema():
     db.create_all()
+    inspector = inspect(db.engine)
+
+    def add_column_if_missing(table_name: str, column_name: str, ddl: str):
+        current = {col['name'] for col in inspector.get_columns(table_name)}
+        if column_name in current:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}'))
+
+    add_column_if_missing('user', 'bio', "VARCHAR(280) DEFAULT ''")
+    add_column_if_missing('user', 'is_online', 'BOOLEAN DEFAULT FALSE')
+    add_column_if_missing('user', 'last_seen_at', 'DATETIME')
+    add_column_if_missing('group', 'description', "VARCHAR(280) DEFAULT ''")
+    add_column_if_missing('group', 'owner_id', "VARCHAR(50) DEFAULT ''")
+
+
+with app.app_context():
+    ensure_schema()
 
 
 # ---------- helpers ----------
@@ -116,18 +156,75 @@ def save_upload(file_storage) -> tuple[str, str]:
     return file_url, get_file_type(original_name)
 
 
-
-
 def normalize_handle(value: str) -> str:
     return (value or '').strip().lstrip('@').replace(' ', '').lower()
 
 
-def avatar_payload(name: str, pfp: str) -> dict:
-    return {'name': name, 'pfp': pfp or ''}
+def to_iso(value):
+    return value.isoformat() + 'Z' if value else None
 
 
-def make_room(my_id: str, target_id: str, is_group: bool) -> str:
-    return f'group_{target_id}' if is_group else '_'.join(sorted([my_id, target_id]))
+def presence_payload(user: User | None):
+    if not user:
+        return {'is_online': False, 'last_seen_at': None, 'status_text': 'Unavailable'}
+    if user.is_online:
+        return {'is_online': True, 'last_seen_at': to_iso(user.last_seen_at), 'status_text': 'Online'}
+    if user.last_seen_at:
+        return {'is_online': False, 'last_seen_at': to_iso(user.last_seen_at), 'status_text': 'Last seen recently'}
+    return {'is_online': False, 'last_seen_at': None, 'status_text': 'Offline'}
+
+
+def touch_online(tele_id: str, sid: str | None = None):
+    if not tele_id:
+        return
+    if sid:
+        active_users.setdefault(tele_id, set()).add(sid)
+    user = User.query.filter_by(tele_id=tele_id).first()
+    if user:
+        user.is_online = True
+        db.session.commit()
+        socketio.emit('presence_update', {'tele_id': tele_id, **presence_payload(user)})
+
+
+def touch_offline(tele_id: str, sid: str | None = None):
+    if not tele_id:
+        return
+    if sid and tele_id in active_users:
+        active_users[tele_id].discard(sid)
+        if not active_users[tele_id]:
+            active_users.pop(tele_id, None)
+    if tele_id in active_users:
+        return
+    user = User.query.filter_by(tele_id=tele_id).first()
+    if user:
+        user.is_online = False
+        user.last_seen_at = datetime.utcnow()
+        db.session.commit()
+        socketio.emit('presence_update', {'tele_id': tele_id, **presence_payload(user)})
+
+
+def get_group_members(code: str):
+    return [m.tele_id for m in GroupMember.query.filter_by(group_code=code).all()]
+
+
+def get_channel_members(code: str):
+    return [m.tele_id for m in ChannelMember.query.filter_by(channel_code=code).all()]
+
+
+def can_post_in_room(sender_id: str, room: str) -> bool:
+    if room.startswith('channel_'):
+        code = room.replace('channel_', '', 1)
+        channel = Channel.query.filter_by(code=code).first()
+        return bool(channel and channel.owner_id == sender_id)
+    return True
+
+
+def room_kind(room: str) -> str:
+    if room.startswith('group_'):
+        return 'group'
+    if room.startswith('channel_'):
+        return 'channel'
+    return 'private'
 
 
 # ---------- routes ----------
@@ -145,14 +242,13 @@ def signup():
 
     if not username or not tele_id or not password:
         return json_error('Fill all fields')
-
     if User.query.filter_by(tele_id=tele_id).first():
         return json_error('ID already taken!')
 
-    user = User(username=username, tele_id=tele_id, password=password)
+    user = User(username=username, tele_id=tele_id, password=password, last_seen_at=datetime.utcnow())
     db.session.add(user)
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or ''})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or ''})
 
 
 @app.route('/login', methods=['POST'])
@@ -165,45 +261,51 @@ def login():
     if not user:
         return json_error('Invalid credentials', 401)
 
+    user.is_online = True
+    user.last_seen_at = datetime.utcnow()
+    db.session.commit()
+
     return jsonify({
         'status': 'success',
         'username': user.username,
         'tele_id': user.tele_id,
-        'pfp': user.pfp or ''
+        'pfp': user.pfp or '',
+        'bio': user.bio or '',
+        **presence_payload(user),
     })
 
 
 @app.route('/search_suggestions')
 def search_suggestions():
     q = normalize_handle(request.args.get('q') or '')
-    my_id = (request.args.get('my_id') or '').strip()
+    my_id = normalize_handle(request.args.get('my_id') or '')
     if not q:
         return jsonify([])
 
     like_term = f'%{q}%'
+    results = []
 
     users = User.query.filter(
         or_(User.tele_id.ilike(like_term), User.username.ilike(like_term))
-    ).order_by(
-        db.case((User.tele_id.ilike(q), 0), (User.tele_id.ilike(f'{q}%'), 1), else_=2),
-        User.username.asc()
-    ).limit(8).all()
-
-    groups = Group.query.filter(
-        or_(Group.code.ilike(like_term), Group.name.ilike(like_term))
-    ).order_by(
-        db.case((Group.code.ilike(q), 0), (Group.code.ilike(f'{q}%'), 1), else_=2),
-        Group.name.asc()
-    ).limit(8).all()
-
-    results = []
+    ).order_by(User.username.asc()).limit(8).all()
     for user in users:
         if user.tele_id == my_id:
             continue
-        results.append({'type': 'user', 'name': user.username, 'id': user.tele_id, 'pfp': user.pfp or ''})
+        results.append({'type': 'user', 'name': user.username, 'id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', **presence_payload(user)})
+
+    groups = Group.query.filter(
+        or_(Group.code.ilike(like_term), Group.name.ilike(like_term))
+    ).order_by(Group.name.asc()).limit(6).all()
     for group in groups:
-        results.append({'type': 'group', 'name': group.name, 'id': group.code, 'pfp': group.pfp or ''})
-    return jsonify(results[:10])
+        results.append({'type': 'group', 'name': group.name, 'id': group.code, 'pfp': group.pfp or '', 'description': group.description or ''})
+
+    channels = Channel.query.filter(
+        or_(Channel.code.ilike(like_term), Channel.name.ilike(like_term))
+    ).order_by(Channel.name.asc()).limit(6).all()
+    for channel in channels:
+        results.append({'type': 'channel', 'name': channel.name, 'id': channel.code, 'pfp': channel.pfp or '', 'description': channel.description or ''})
+
+    return jsonify(results[:12])
 
 
 @app.route('/create_group', methods=['POST'])
@@ -211,25 +313,26 @@ def create_group():
     data = request.json or {}
     name = (data.get('name') or '').strip()
     code = normalize_handle(data.get('code') or '')
-    creator_id = (data.get('creator_id') or '').strip()
+    creator_id = normalize_handle(data.get('creator_id') or '')
+    description = (data.get('description') or '').strip()
 
     if not name or not code or not creator_id:
         return json_error('Fill all fields')
-    if Group.query.filter_by(code=code).first():
-        return json_error('Group code already exists!')
+    if Group.query.filter_by(code=code).first() or Channel.query.filter_by(code=code).first():
+        return json_error('Code already exists!')
 
-    group = Group(name=name, code=code)
+    group = Group(name=name, code=code, description=description, owner_id=creator_id)
     db.session.add(group)
     db.session.add(GroupMember(group_code=code, tele_id=creator_id))
     db.session.commit()
-    return jsonify({'status': 'success'})
+    return jsonify({'status': 'success', 'group': {'name': group.name, 'code': group.code, 'pfp': group.pfp or '', 'description': group.description or ''}})
 
 
 @app.route('/join_group', methods=['POST'])
 def join_group():
     data = request.json or {}
     code = normalize_handle(data.get('code') or '')
-    tele_id = (data.get('tele_id') or '').strip()
+    tele_id = normalize_handle(data.get('tele_id') or '')
 
     group = Group.query.filter_by(code=code).first()
     if not group:
@@ -240,70 +343,150 @@ def join_group():
         db.session.add(GroupMember(group_code=code, tele_id=tele_id))
         db.session.commit()
 
-    return jsonify({'status': 'success', 'group': {'name': group.name, 'code': group.code, 'pfp': group.pfp or ''}})
+    return jsonify({'status': 'success', 'group': {'name': group.name, 'code': group.code, 'pfp': group.pfp or '', 'description': group.description or ''}})
+
+
+@app.route('/create_channel', methods=['POST'])
+def create_channel():
+    data = request.json or {}
+    name = (data.get('name') or '').strip()
+    code = normalize_handle(data.get('code') or '')
+    owner_id = normalize_handle(data.get('owner_id') or '')
+    description = (data.get('description') or '').strip()
+
+    if not name or not code or not owner_id:
+        return json_error('Fill all fields')
+    if Channel.query.filter_by(code=code).first() or Group.query.filter_by(code=code).first():
+        return json_error('Code already exists!')
+
+    channel = Channel(name=name, code=code, owner_id=owner_id, description=description)
+    db.session.add(channel)
+    db.session.add(ChannelMember(channel_code=code, tele_id=owner_id))
+    db.session.commit()
+    return jsonify({'status': 'success', 'channel': {'name': channel.name, 'code': channel.code, 'pfp': channel.pfp or '', 'description': channel.description or '', 'owner_id': channel.owner_id}})
+
+
+@app.route('/join_channel', methods=['POST'])
+def join_channel():
+    data = request.json or {}
+    code = normalize_handle(data.get('code') or '')
+    tele_id = normalize_handle(data.get('tele_id') or '')
+
+    channel = Channel.query.filter_by(code=code).first()
+    if not channel:
+        return json_error('Channel not found')
+
+    exists = ChannelMember.query.filter_by(channel_code=code, tele_id=tele_id).first()
+    if not exists:
+        db.session.add(ChannelMember(channel_code=code, tele_id=tele_id))
+        db.session.commit()
+
+    return jsonify({'status': 'success', 'channel': {'name': channel.name, 'code': channel.code, 'pfp': channel.pfp or '', 'description': channel.description or '', 'owner_id': channel.owner_id}})
 
 
 @app.route('/recent_chats/<my_id>')
 def recent_chats(my_id):
+    my_id = normalize_handle(my_id)
     chat_dict = {}
-    messages = Message.query.filter(Message.room.contains(my_id)).order_by(Message.timestamp.desc()).all()
+    messages = Message.query.order_by(Message.timestamp.desc()).all()
 
     for msg in messages:
-        if msg.room.startswith('group_'):
-            continue
-        if msg.room in chat_dict:
-            continue
-
-        parts = msg.room.split('_')
-        if len(parts) != 2:
-            continue
-        other_id = parts[0] if parts[1] == my_id else parts[1]
-        if other_id == my_id:
-            continue
-
-        other_user = User.query.filter_by(tele_id=other_id).first()
-        if not other_user:
-            continue
-
-        last_msg = 'Deleted' if msg.is_deleted else (msg.content if msg.msg_type == 'text' else f'[{msg.msg_type}]')
-        chat_dict[msg.room] = {
-            'is_group': False,
-            'id': other_id,
-            'name': other_user.username,
-            'pfp': other_user.pfp or '',
-            'last_msg': last_msg,
-            'time': msg.timestamp.strftime('%H:%M'),
-            'ts': msg.timestamp.timestamp(),
-        }
+        kind = room_kind(msg.room)
+        if kind == 'private':
+            if my_id not in msg.room.split('_'):
+                continue
+            if msg.room in chat_dict:
+                continue
+            a, b = msg.room.split('_', 1)
+            other_id = a if b == my_id else b
+            other_user = User.query.filter_by(tele_id=other_id).first()
+            if not other_user:
+                continue
+            last_msg = 'Deleted' if msg.is_deleted else (msg.content if msg.msg_type == 'text' else f'[{msg.msg_type}]')
+            chat_dict[msg.room] = {
+                'kind': 'private',
+                'is_group': False,
+                'is_channel': False,
+                'id': other_id,
+                'name': other_user.username,
+                'pfp': other_user.pfp or '',
+                'last_msg': last_msg,
+                'timestamp': to_iso(msg.timestamp),
+                **presence_payload(other_user),
+            }
+        elif kind == 'group':
+            code = msg.room.replace('group_', '', 1)
+            if my_id not in get_group_members(code):
+                continue
+            if msg.room in chat_dict:
+                continue
+            group = Group.query.filter_by(code=code).first()
+            if not group:
+                continue
+            body = 'Deleted' if msg.is_deleted else (msg.content if msg.msg_type == 'text' else f'[{msg.msg_type}]')
+            chat_dict[msg.room] = {
+                'kind': 'group',
+                'is_group': True,
+                'is_channel': False,
+                'id': group.code,
+                'name': group.name,
+                'pfp': group.pfp or '',
+                'description': group.description or '',
+                'last_msg': f'{msg.sender_name}: {body}',
+                'timestamp': to_iso(msg.timestamp),
+            }
+        else:
+            code = msg.room.replace('channel_', '', 1)
+            if my_id not in get_channel_members(code):
+                continue
+            if msg.room in chat_dict:
+                continue
+            channel = Channel.query.filter_by(code=code).first()
+            if not channel:
+                continue
+            body = 'Deleted' if msg.is_deleted else (msg.content if msg.msg_type == 'text' else f'[{msg.msg_type}]')
+            chat_dict[msg.room] = {
+                'kind': 'channel',
+                'is_group': False,
+                'is_channel': True,
+                'id': channel.code,
+                'name': channel.name,
+                'pfp': channel.pfp or '',
+                'description': channel.description or '',
+                'last_msg': f'{msg.sender_name}: {body}',
+                'timestamp': to_iso(msg.timestamp),
+                'owner_id': channel.owner_id,
+            }
 
     memberships = GroupMember.query.filter_by(tele_id=my_id).all()
     for membership in memberships:
         group = Group.query.filter_by(code=membership.group_code).first()
         if not group:
             continue
-
         room_name = f'group_{group.code}'
-        last_msg = Message.query.filter_by(room=room_name).order_by(Message.timestamp.desc()).first()
-        last_text, time_str, ts = 'No messages yet', '', 0
-        if last_msg:
-            body = 'Deleted' if last_msg.is_deleted else (last_msg.content if last_msg.msg_type == 'text' else f'[{last_msg.msg_type}]')
-            last_text = f'{last_msg.sender_name}: {body}'
-            time_str = last_msg.timestamp.strftime('%H:%M')
-            ts = last_msg.timestamp.timestamp()
-
+        if room_name in chat_dict:
+            continue
         chat_dict[room_name] = {
-            'is_group': True,
-            'id': group.code,
-            'name': group.name,
-            'pfp': group.pfp or '',
-            'last_msg': last_text,
-            'time': time_str,
-            'ts': ts,
+            'kind': 'group', 'is_group': True, 'is_channel': False,
+            'id': group.code, 'name': group.name, 'pfp': group.pfp or '', 'description': group.description or '',
+            'last_msg': 'No messages yet', 'timestamp': None,
         }
 
-    result = sorted(chat_dict.values(), key=lambda item: item.get('ts', 0), reverse=True)
-    for item in result:
-        item.pop('ts', None)
+    channel_memberships = ChannelMember.query.filter_by(tele_id=my_id).all()
+    for membership in channel_memberships:
+        channel = Channel.query.filter_by(code=membership.channel_code).first()
+        if not channel:
+            continue
+        room_name = f'channel_{channel.code}'
+        if room_name in chat_dict:
+            continue
+        chat_dict[room_name] = {
+            'kind': 'channel', 'is_group': False, 'is_channel': True,
+            'id': channel.code, 'name': channel.name, 'pfp': channel.pfp or '', 'description': channel.description or '',
+            'last_msg': channel.description or 'Broadcast channel', 'timestamp': None, 'owner_id': channel.owner_id,
+        }
+
+    result = sorted(chat_dict.values(), key=lambda item: item.get('timestamp') or '', reverse=True)
     return jsonify(result)
 
 
@@ -323,19 +506,27 @@ def get_history(room):
             'msg_type': msg.msg_type,
             'file_url': msg.file_url or '',
             'is_deleted': msg.is_deleted,
-            'timestamp': msg.timestamp.strftime('%H:%M'),
+            'timestamp': to_iso(msg.timestamp),
         })
     return jsonify(result)
 
 
 @app.route('/profile/<tele_id>')
 def profile(tele_id):
+    tele_id = normalize_handle(tele_id)
     user = User.query.filter_by(tele_id=tele_id).first()
-    if not user:
-        return json_error('User not found', 404)
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or ''})
+    if user:
+        return jsonify({'status': 'success', 'kind': 'user', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', **presence_payload(user)})
 
+    group = Group.query.filter_by(code=tele_id).first()
+    if group:
+        return jsonify({'status': 'success', 'kind': 'group', 'name': group.name, 'tele_id': group.code, 'pfp': group.pfp or '', 'description': group.description or '', 'member_count': len(get_group_members(group.code)), 'owner_id': group.owner_id})
 
+    channel = Channel.query.filter_by(code=tele_id).first()
+    if channel:
+        return jsonify({'status': 'success', 'kind': 'channel', 'name': channel.name, 'tele_id': channel.code, 'pfp': channel.pfp or '', 'description': channel.description or '', 'member_count': len(get_channel_members(channel.code)), 'owner_id': channel.owner_id})
+
+    return json_error('Profile not found', 404)
 
 
 @app.route('/update_profile', methods=['POST'])
@@ -343,23 +534,24 @@ def update_profile():
     data = request.json or {}
     tele_id = normalize_handle(data.get('tele_id') or '')
     username = (data.get('username') or '').strip()
+    bio = (data.get('bio') or '').strip()[:280]
 
     if not tele_id or not username:
         return json_error('Fill all fields')
-
     user = User.query.filter_by(tele_id=tele_id).first()
     if not user:
         return json_error('User not found', 404)
 
     user.username = username
+    user.bio = bio
     db.session.commit()
-    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or ''})
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or ''})
+
 
 @app.route('/upload', methods=['POST'])
 def upload():
     if 'file' not in request.files:
         return json_error('No file')
-
     file = request.files['file']
     try:
         file_url, detected_type = save_upload(file)
@@ -380,11 +572,33 @@ def upload():
 
 
 # ---------- socket events ----------
-@socketio.on('connect_radar')
-def connect_radar(data):
-    my_id = (data or {}).get('my_id')
+@socketio.on('connect')
+def on_connect():
+    pass
+
+
+@socketio.on('presence_online')
+def presence_online(data):
+    my_id = normalize_handle((data or {}).get('my_id') or '')
+    if not my_id:
+        return
+    join_room(my_id)
+    touch_online(my_id, request.sid)
+
+
+@socketio.on('disconnect')
+def on_disconnect():
+    for tele_id, sids in list(active_users.items()):
+        if request.sid in sids:
+            touch_offline(tele_id, request.sid)
+            break
+
+
+@socketio.on('presence_offline')
+def presence_offline(data):
+    my_id = normalize_handle((data or {}).get('my_id') or '')
     if my_id:
-        join_room(my_id)
+        touch_offline(my_id, request.sid)
 
 
 @socketio.on('join_chat')
@@ -397,64 +611,81 @@ def join_chat(data):
 @socketio.on('private_message')
 def handle_private_message(data):
     room = (data or {}).get('room', '')
-    sender_id = (data or {}).get('sender_id', '')
+    sender_id = normalize_handle((data or {}).get('sender_id', ''))
     sender_name = (data or {}).get('sender_name', '')
     msg_type = (data or {}).get('msg_type', 'text')
     content = (data or {}).get('content', '')
     file_url = (data or {}).get('file_url', '')
+    target_id = normalize_handle((data or {}).get('target_id', ''))
 
     if not room or not sender_id or not sender_name:
         return
     if not content and not file_url:
         return
+    if not can_post_in_room(sender_id, room):
+        emit('action_error', {'message': 'Only the channel owner can post here.'}, room=request.sid)
+        return
 
-    msg = Message(
-        room=room,
-        sender_id=sender_id,
-        sender_name=sender_name,
-        content=content,
-        msg_type=msg_type,
-        file_url=file_url,
-    )
+    msg = Message(room=room, sender_id=sender_id, sender_name=sender_name, content=content, msg_type=msg_type, file_url=file_url)
     db.session.add(msg)
     db.session.commit()
 
     sender = User.query.filter_by(tele_id=sender_id).first()
     payload = {
-        **data,
+        **(data or {}),
         'id': msg.id,
         'room': room,
         'sender_pfp': sender.pfp if sender else '',
-        'timestamp': msg.timestamp.strftime('%H:%M'),
+        'timestamp': to_iso(msg.timestamp),
     }
-
     emit('new_message', payload, room=room)
 
-    if payload.get('is_group'):
-        members = GroupMember.query.filter_by(group_code=payload.get('target_id')).all()
-        for member in members:
-            emit('ping_radar', payload, room=member.tele_id)
+    kind = room_kind(room)
+    if kind == 'group':
+        for member_id in get_group_members(target_id):
+            emit('ping_radar', payload, room=member_id)
+    elif kind == 'channel':
+        for member_id in get_channel_members(target_id):
+            emit('ping_radar', payload, room=member_id)
     else:
-        emit('ping_radar', payload, room=payload.get('target_id'))
+        emit('ping_radar', payload, room=target_id)
         emit('ping_radar', payload, room=sender_id)
+
+
+@socketio.on('typing')
+def handle_typing(data):
+    room = (data or {}).get('room', '')
+    tele_id = normalize_handle((data or {}).get('tele_id', ''))
+    name = (data or {}).get('name', '')
+    target_id = normalize_handle((data or {}).get('target_id', ''))
+    is_typing = bool((data or {}).get('is_typing', False))
+    if not room or not tele_id:
+        return
+    payload = {'room': room, 'tele_id': tele_id, 'name': name, 'is_typing': is_typing}
+    if room_kind(room) == 'private':
+        emit('typing', payload, room=target_id)
+    else:
+        emit('typing', payload, room=room, include_self=False)
 
 
 @socketio.on('delete_message')
 def delete_message(data):
     msg_id = (data or {}).get('msg_id')
-    sender_id = (data or {}).get('sender_id')
+    sender_id = normalize_handle((data or {}).get('sender_id'))
     msg = Message.query.get(msg_id)
     if not msg or msg.sender_id != sender_id:
         return
-
     msg.is_deleted = True
     db.session.commit()
     emit('message_deleted', {'msg_id': msg.id, 'room': msg.room}, room=msg.room)
 
-    if msg.room.startswith('group_'):
-        group_code = msg.room.replace('group_', '', 1)
-        for member in GroupMember.query.filter_by(group_code=group_code).all():
-            emit('ping_radar', {}, room=member.tele_id)
+    kind = room_kind(msg.room)
+    if kind == 'group':
+        for member_id in get_group_members(msg.room.replace('group_', '', 1)):
+            emit('ping_radar', {}, room=member_id)
+    elif kind == 'channel':
+        for member_id in get_channel_members(msg.room.replace('channel_', '', 1)):
+            emit('ping_radar', {}, room=member_id)
     else:
         for uid in msg.room.split('_'):
             emit('ping_radar', {}, room=uid)
@@ -462,27 +693,27 @@ def delete_message(data):
 
 @socketio.on('call_user')
 def call_user(data):
-    emit('incoming_call', data, room=(data or {}).get('target_id'))
+    emit('incoming_call', data, room=normalize_handle((data or {}).get('target_id')))
 
 
 @socketio.on('answer_call')
 def answer_call(data):
-    emit('call_answered', data, room=(data or {}).get('target_id'))
+    emit('call_answered', data, room=normalize_handle((data or {}).get('target_id')))
 
 
 @socketio.on('ice_candidate')
 def ice_candidate(data):
-    emit('ice_candidate', data, room=(data or {}).get('target_id'))
+    emit('ice_candidate', data, room=normalize_handle((data or {}).get('target_id')))
 
 
 @socketio.on('reject_call')
 def reject_call(data):
-    emit('call_rejected', {}, room=(data or {}).get('target_id'))
+    emit('call_rejected', {}, room=normalize_handle((data or {}).get('target_id')))
 
 
 @socketio.on('end_call')
 def end_call(data):
-    emit('call_ended', {}, room=(data or {}).get('target_id'))
+    emit('call_ended', {}, room=normalize_handle((data or {}).get('target_id')))
 
 
 if __name__ == '__main__':

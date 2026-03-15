@@ -565,3 +565,18 @@ h1, h2, h3, p { margin: 0; }
   .message-media { max-width: min(260px, 68vw); }
   .profile-sheet-card { top: auto; bottom: 14px; transform: translateX(-50%); }
 }
+
+textarea.base-input.textarea-input { min-height: 110px; resize: vertical; }
+.quick-actions { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.quick-chip { border: none; border-radius: 999px; padding: 10px 14px; background: rgba(109,94,252,0.12); color: var(--accent); font-weight: 700; cursor: pointer; }
+.chat-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.header-actions.compact { gap: 8px; }
+.channel-banner { margin: 14px 14px 0; padding: 10px 14px; border-radius: 16px; background: rgba(109,94,252,0.10); color: var(--accent); font-weight: 600; }
+.typing-indicator { min-height: 20px; padding: 0 18px 10px; color: var(--muted); font-size: 0.88rem; }
+.sheet-subtext { display: block; color: var(--muted); margin-top: 8px; }
+.sheet-bio-wrap { background: rgba(255,255,255,0.56); border-radius: 20px; padding: 16px; margin-bottom: 12px; }
+.small-avatar { width: 38px; height: 38px; border-radius: 14px; font-size: 0.95rem; }
+@media (max-width: 980px) {
+  .channel-banner { margin: 10px 10px 0; }
+  .typing-indicator { padding: 0 14px 8px; }
+}

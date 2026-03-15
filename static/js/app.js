@@ -1,564 +1,519 @@
 const socket = io();
 
 const state = {
-    myID: localStorage.getItem('fID') || '',
-    myName: localStorage.getItem('fName') || '',
-    myPFP: localStorage.getItem('fPFP') || '',
-    currentTargetID: '',
-    currentTargetName: '',
-    currentTargetPFP: '',
-    isCurrentChatGroup: false,
-    isSignUp: false,
-    mobileTab: 'chats',
-    profileCache: {},
+  myID: localStorage.getItem('fID') || '',
+  myName: localStorage.getItem('fName') || '',
+  myPFP: localStorage.getItem('fPFP') || '',
+  myBio: localStorage.getItem('fBio') || '',
+  currentTargetID: '',
+  currentTargetName: '',
+  currentTargetPFP: '',
+  currentTargetKind: 'private',
+  currentStatusText: '',
+  mobileTab: 'chats',
+  isSignUp: false,
+  profileCache: {},
+  typingTimer: null,
+  sentTyping: false,
 };
 
 const byId = (id) => document.getElementById(id);
 const escapeHtml = (str = '') => String(str)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
 
 function normalizeHandle(value = '') {
-    return value.trim().replace(/^@+/, '').replace(/\s+/g, '').toLowerCase();
+  return value.trim().replace(/^@+/, '').replace(/\s+/g, '').toLowerCase();
 }
-
-function getInitial(name = '?') {
-    return (name || '?').trim().charAt(0).toUpperCase();
-}
-
+function getInitial(name = '?') { return (name || '?').trim().charAt(0).toUpperCase(); }
 function setAvatar(el, name, pfp) {
-    if (!el) return;
-    el.style.backgroundImage = pfp ? `url(${pfp})` : '';
-    el.textContent = pfp ? '' : getInitial(name);
+  if (!el) return;
+  el.style.backgroundImage = pfp ? `url(${pfp})` : '';
+  el.textContent = pfp ? '' : getInitial(name);
 }
-
 function showToast(message) {
-    const toast = byId('toast');
-    toast.textContent = message;
-    toast.classList.remove('hidden');
-    clearTimeout(showToast.timer);
-    showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2400);
+  const toast = byId('toast');
+  toast.textContent = message;
+  toast.classList.remove('hidden');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2400);
+}
+function isMobileLayout() { return window.innerWidth <= 980; }
+function kindLabel(kind) {
+  if (kind === 'group') return 'Group chat';
+  if (kind === 'channel') return 'Channel';
+  return 'Private chat';
+}
+function buildRoom(id, kind) {
+  if (kind === 'group') return `group_${id}`;
+  if (kind === 'channel') return `channel_${id}`;
+  return [state.myID, id].sort().join('_');
+}
+function formatTime(iso, full = false) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (full) {
+    return d.toLocaleString([], { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' });
+  }
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+function formatPresence(isOnline, lastSeenAt) {
+  if (isOnline) return 'Online';
+  if (!lastSeenAt) return 'Offline';
+  return `Last seen ${formatTime(lastSeenAt, true)}`;
 }
 
 function toggleAuth(forceSignUp = null) {
-    state.isSignUp = forceSignUp === null ? !state.isSignUp : Boolean(forceSignUp);
-    byId('display-name-wrap').classList.toggle('hidden', !state.isSignUp);
-    byId('abtn').textContent = state.isSignUp ? 'Create account' : 'Log In';
-    byId('auth-title').textContent = state.isSignUp ? 'Create your account' : 'Welcome back';
-    byId('auth-subtitle').textContent = state.isSignUp
-        ? 'Choose your @username, display name, and password.'
-        : 'Log in with your @username and password.';
-    byId('auth-switch-text').textContent = state.isSignUp ? 'Already have an account?' : 'Don’t have an account?';
-    byId('auth-switch-link').textContent = state.isSignUp ? 'Log in' : 'Sign up';
+  state.isSignUp = forceSignUp === null ? !state.isSignUp : Boolean(forceSignUp);
+  byId('display-name-wrap').classList.toggle('hidden', !state.isSignUp);
+  byId('abtn').textContent = state.isSignUp ? 'Create Account' : 'Log In';
+  byId('auth-title').textContent = state.isSignUp ? 'Create your account' : 'Welcome back';
+  byId('auth-subtitle').textContent = state.isSignUp ? 'Sign up with a display name, @username, and password.' : 'Log in with your @username and password.';
+  byId('auth-switch-text').textContent = state.isSignUp ? 'Already have an account?' : 'Don’t have an account?';
+  byId('auth-switch-link').textContent = state.isSignUp ? 'Log in' : 'Sign up';
 }
-
-
-function isMobileLayout() {
-    return window.matchMedia('(max-width: 980px)').matches;
-}
-
-function setMobileTab(tab) {
-    state.mobileTab = tab;
-    const app = byId('main-app');
-    if (!app) return;
-    app.dataset.mobileTab = tab;
-    document.body.classList.toggle('chat-open', tab === 'chat' && Boolean(state.currentTargetID));
-    ['chats', 'chat', 'settings'].forEach((name) => {
-        byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab);
-    });
-}
-
-function maybeShowMobileTabs() {
-    byId('mobile-tabbar')?.classList.toggle('hidden', !state.myID);
-    if (!isMobileLayout()) {
-        document.body.classList.remove('chat-open');
-        return;
-    }
-    if (!state.currentTargetID && state.mobileTab === 'chat') {
-        setMobileTab('chats');
-        return;
-    }
-    setMobileTab(state.mobileTab || 'chats');
-}
-
-function closeCurrentChat() {
-    state.currentTargetID = '';
-    state.currentTargetName = '';
-    state.currentTargetPFP = '';
-    state.isCurrentChatGroup = false;
-    byId('chat-panel').className = 'chat-panel glass-card empty-state';
-    byId('chat-panel').innerHTML = `<div class="empty-center"><div class="empty-icon">💬</div><h3>Select a chat</h3><p>Search a user ID, open a recent chat, or create a group.</p></div>`;
-    document.querySelectorAll('.chat-row').forEach((el) => el.classList.remove('active'));
-    setMobileTab('chats');
-}
-
-async function openProfileSheet() {
-    if (!state.currentTargetID) return;
-    let data = state.profileCache[state.currentTargetID];
-    if (!state.isCurrentChatGroup) {
-        try {
-            const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}`);
-            const json = await res.json();
-            if (json.status === 'success') {
-                data = json;
-                state.profileCache[state.currentTargetID] = json;
-            }
-        } catch {}
-    }
-    const name = data?.username || state.currentTargetName;
-    const handle = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
-    byId('sheet-name').textContent = name || 'Chat';
-    byId('sheet-handle').textContent = handle;
-    byId('sheet-kind').textContent = state.isCurrentChatGroup ? 'Group chat' : 'Private chat';
-    setAvatar(byId('sheet-avatar'), name, data?.pfp || state.currentTargetPFP);
-    byId('chat-profile-sheet').classList.remove('hidden');
-}
-
-function closeProfileSheet() {
-    byId('chat-profile-sheet').classList.add('hidden');
-}
-
-async function copyChatIdentity() {
-    const value = state.isCurrentChatGroup ? state.currentTargetID : `@${state.currentTargetID}`;
-    try {
-        await navigator.clipboard.writeText(value);
-        showToast('Copied');
-    } catch {
-        showToast(value);
-    }
-}
-
 function switchToSignUp() {
-    logout(false);
-    toggleAuth(true);
-    byId('auth-screen').classList.remove('hidden');
-    byId('main-app').classList.add('hidden');
+  logout(false);
+  toggleAuth(true);
 }
 
 async function handleAuth() {
-    const payload = {
-        username: byId('aname').value.trim(),
-        tele_id: normalizeHandle(byId('aid').value),
-        password: byId('apass').value.trim(),
-    };
-
-    if (!payload.tele_id || !payload.password || (state.isSignUp && !payload.username)) {
-        showToast('Fill all fields');
-        return;
-    }
-
-    const endpoint = state.isSignUp ? '/signup' : '/login';
-    const body = state.isSignUp ? payload : { tele_id: payload.tele_id, password: payload.password };
-    const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.status !== 'success') {
-        showToast(data.message || 'Something went wrong');
-        return;
-    }
-
-    state.myID = data.tele_id || payload.tele_id;
-    state.myName = data.username || payload.username;
-    state.myPFP = data.pfp || '';
-    localStorage.setItem('fID', state.myID);
-    localStorage.setItem('fName', state.myName);
-    localStorage.setItem('fPFP', state.myPFP);
-    startSession();
-    showToast(state.isSignUp ? 'Account created' : 'Logged in');
+  const username = byId('aname').value.trim();
+  const tele_id = normalizeHandle(byId('aid').value);
+  const password = byId('apass').value.trim();
+  if (!tele_id || !password || (state.isSignUp && !username)) {
+    showToast('Fill all fields');
+    return;
+  }
+  const route = state.isSignUp ? '/signup' : '/login';
+  const res = await fetch(route, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, tele_id, password })
+  });
+  const data = await res.json();
+  if (data.status !== 'success') {
+    showToast(data.message || 'Could not continue');
+    return;
+  }
+  state.myID = data.tele_id;
+  state.myName = data.username;
+  state.myPFP = data.pfp || '';
+  state.myBio = data.bio || '';
+  localStorage.setItem('fID', state.myID);
+  localStorage.setItem('fName', state.myName);
+  localStorage.setItem('fPFP', state.myPFP);
+  localStorage.setItem('fBio', state.myBio);
+  byId('aid').value = '';
+  byId('apass').value = '';
+  byId('aname').value = '';
+  startSession();
 }
 
-function logout(reload = true) {
-    localStorage.removeItem('fID');
-    localStorage.removeItem('fName');
-    localStorage.removeItem('fPFP');
-    byId('mobile-tabbar')?.classList.add('hidden');
-    if (reload) location.reload();
+function hydrateProfile() {
+  byId('auth-screen').classList.add('hidden');
+  byId('main-app').classList.remove('hidden');
+  byId('mobile-tabbar').classList.remove('hidden');
+  byId('settings-fullname').textContent = state.myName;
+  byId('settings-fullname-2').textContent = state.myName;
+  byId('settings-id').textContent = `@${state.myID}`;
+  byId('settings-id-2').textContent = `@${state.myID}`;
+  byId('settings-bio').textContent = state.myBio || 'No bio yet';
+  byId('edit-display-name').value = state.myName;
+  byId('edit-bio').value = state.myBio || '';
+  setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
+  setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
+  setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : 'chats');
 }
 
+async function startSession() {
+  hydrateProfile();
+  socket.emit('presence_online', { my_id: state.myID });
+  await loadRecentChats();
+}
+
+function logout(show = true) {
+  if (state.myID) socket.emit('presence_offline', { my_id: state.myID });
+  Object.assign(state, { myID: '', myName: '', myPFP: '', myBio: '', currentTargetID: '', currentTargetName: '', currentTargetPFP: '', currentTargetKind: 'private' });
+  localStorage.removeItem('fID');
+  localStorage.removeItem('fName');
+  localStorage.removeItem('fPFP');
+  localStorage.removeItem('fBio');
+  byId('auth-screen').classList.remove('hidden');
+  byId('main-app').classList.add('hidden');
+  byId('mobile-tabbar').classList.add('hidden');
+  document.body.classList.remove('chat-open');
+  byId('chat-panel').className = 'chat-panel glass-card empty-state';
+  byId('chat-panel').innerHTML = `<div class="empty-center"><div class="empty-icon">💬</div><h3>Select a chat</h3><p>Search a user, open a recent chat, create a group, or launch your own channel.</p></div>`;
+  if (show) showToast('Logged out');
+}
+
+function setMobileTab(tab) {
+  state.mobileTab = tab;
+  const main = byId('main-app');
+  main.dataset.mobileTab = tab;
+  ['chats', 'chat', 'settings'].forEach((name) => byId(`tab-btn-${name}`)?.classList.toggle('active', name === tab));
+  document.body.classList.toggle('chat-open', tab === 'chat' && isMobileLayout() && Boolean(state.currentTargetID));
+}
+function closeCurrentChat() {
+  state.currentTargetID = '';
+  document.body.classList.remove('chat-open');
+  setMobileTab('chats');
+}
 function openModal(id) { byId(id).classList.remove('hidden'); }
 function closeModal(id) { byId(id).classList.add('hidden'); }
 
-function hydrateProfile() {
-    byId('settings-fullname').textContent = state.myName || 'User';
-    byId('settings-id').textContent = `@${state.myID}`;
-    byId('settings-fullname-2').textContent = state.myName || 'User';
-    byId('settings-id-2').textContent = `@${state.myID}`;
-    byId('edit-display-name').value = state.myName || '';
-    setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
-    setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
-}
-
-function startSession() {
-    byId('auth-screen').classList.add('hidden');
-    byId('main-app').classList.remove('hidden');
-    hydrateProfile();
-    socket.emit('connect_radar', { my_id: state.myID });
-    loadRecentChats();
-    maybeShowMobileTabs();
-}
-
 async function saveProfile() {
-    const username = byId('edit-display-name').value.trim();
-    if (!username) {
-        showToast('Display name required');
-        return;
-    }
-
-    const res = await fetch('/update_profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tele_id: state.myID, username }),
-    });
-    const data = await res.json();
-    if (data.status !== 'success') {
-        showToast(data.message || 'Could not update profile');
-        return;
-    }
-
-    state.myName = data.username;
-    localStorage.setItem('fName', state.myName);
-    hydrateProfile();
-    closeModal('profile-modal');
-    await loadRecentChats();
-    if (state.currentTargetID) {
-        await openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup);
-    }
-    showToast('Profile updated');
-}
-
-async function doSearch() {
-    const q = byId('search-input').value.trim();
-    const sug = byId('suggestions');
-    sug.innerHTML = '';
-    if (!q) {
-        sug.classList.remove('show');
-        return;
-    }
-
-    const res = await fetch(`/search_suggestions?q=${encodeURIComponent(normalizeHandle(q) || q)}&my_id=${encodeURIComponent(state.myID)}`);
-    const data = await res.json();
-
-    if (!Array.isArray(data) || data.length === 0) {
-        sug.innerHTML = `<div class="suggestion-row"><div class="chat-meta"><strong>No result</strong><p>Try exact @username or group code</p></div></div>`;
-        sug.classList.add('show');
-        return;
-    }
-
-    data.forEach((item) => {
-        const row = document.createElement('div');
-        row.className = 'suggestion-row';
-        row.innerHTML = `
-            <div class="avatar"></div>
-            <div class="chat-meta">
-                <strong>${escapeHtml(item.name)}</strong>
-                <p>${item.type === 'user' ? '@' : ''}${escapeHtml(item.id)}</p>
-            </div>
-            <span class="tag">${item.type}</span>
-        `;
-        setAvatar(row.querySelector('.avatar'), item.name, item.pfp);
-        row.onclick = async () => {
-            sug.classList.remove('show');
-            byId('search-input').value = '';
-            await openChat(item.name, item.id, item.pfp, item.type === 'group');
-        };
-        sug.appendChild(row);
-    });
-    sug.classList.add('show');
-}
-
-async function createGroup() {
-    const name = byId('group-name').value.trim();
-    const code = normalizeHandle(byId('group-code').value);
-    if (!name || !code) {
-        showToast('Fill group name and code');
-        return;
-    }
-
-    const res = await fetch('/create_group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, code, creator_id: state.myID }),
-    });
-    const data = await res.json();
-    if (data.status !== 'success') {
-        showToast(data.message || 'Could not create group');
-        return;
-    }
-    closeModal('group-modal');
-    byId('group-name').value = '';
-    byId('group-code').value = '';
-    await loadRecentChats();
-    await openChat(name, code, '', true);
-    showToast('Group created');
-}
-
-async function joinGroup() {
-    const code = normalizeHandle(byId('group-code').value);
-    if (!code) {
-        showToast('Enter a group code');
-        return;
-    }
-    const res = await fetch('/join_group', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, tele_id: state.myID }),
-    });
-    const data = await res.json();
-    if (data.status !== 'success') {
-        showToast(data.message || 'Could not join group');
-        return;
-    }
-    closeModal('group-modal');
-    byId('group-name').value = '';
-    byId('group-code').value = '';
-    await loadRecentChats();
-    await openChat(data.group.name, data.group.code, data.group.pfp, true);
-    showToast('Joined group');
-}
-
-function buildRoom(id, isGroup) {
-    return isGroup ? `group_${id}` : [state.myID, id].sort().join('_');
-}
-
-function renderChatPanel(name, pfp, isGroup) {
-    const panel = byId('chat-panel');
-    panel.className = 'chat-panel glass-card';
-    panel.innerHTML = `
-        <div class="chat-shell">
-            <div class="chat-header">
-                <div class="chat-header-left clickable" onclick="openProfileSheet()">
-                    <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
-                    <div id="chat-header-avatar" class="avatar"></div>
-                    <div class="chat-header-meta">
-                        <strong id="chat-header-name"></strong>
-                        <p>${isGroup ? 'Group chat' : 'Private chat'}</p>
-                    </div>
-                </div>
-                <div class="header-actions">
-                    <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
-                </div>
-            </div>
-            <div id="messages-view" class="messages-view"></div>
-            <div class="chat-input-area">
-                <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
-                <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
-                <input type="text" id="msg-input" placeholder="Type a message" onkeypress="if(event.key==='Enter') sendMsg()">
-                <button class="send-btn" onclick="sendMsg()">➤</button>
-            </div>
-        </div>
-    `;
-    byId('chat-header-name').textContent = name;
-    setAvatar(byId('chat-header-avatar'), name, pfp);
-}
-
-async function openChat(name, id, pfp, isGroup) {
-    state.currentTargetID = id;
-    state.currentTargetName = name;
-    state.currentTargetPFP = pfp || '';
-    state.isCurrentChatGroup = isGroup;
-    renderChatPanel(name, pfp, isGroup);
-
-    document.querySelectorAll('.chat-row').forEach((el) => {
-        el.classList.toggle('active', el.dataset.chatId === id && el.dataset.group === String(isGroup));
-    });
-
-    const room = buildRoom(id, isGroup);
-    socket.emit('join_chat', { room });
-    const res = await fetch(`/history/${encodeURIComponent(room)}`);
-    const msgs = await res.json();
-    const view = byId('messages-view');
-    view.innerHTML = '';
-    msgs.forEach(renderBubble);
-    view.scrollTop = view.scrollHeight;
-    if (isMobileLayout()) setMobileTab('chat');
-}
-
-function messageBodyHtml(data) {
-    if (data.is_deleted) {
-        return '<div class="bubble deleted">Message deleted</div>';
-    }
-
-    const safeText = data.content ? `<div>${escapeHtml(data.content).replaceAll('\n', '<br>')}</div>` : '';
-
-    if (data.msg_type === 'image') {
-        return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'} image-wrap"><img class="message-media" src="${data.file_url}" alt="image"></div>${safeText ? `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${safeText}</div>` : ''}`;
-    }
-    if (data.msg_type === 'video') {
-        return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'} video-wrap"><video class="message-media" src="${data.file_url}" controls playsinline></video></div>${safeText ? `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${safeText}</div>` : ''}`;
-    }
-    if (data.msg_type === 'audio') {
-        return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'} audio-wrap"><audio src="${data.file_url}" controls></audio></div>${safeText ? `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${safeText}</div>` : ''}`;
-    }
-    if (data.msg_type === 'file') {
-        const fileName = decodeURIComponent((data.file_url || '').split('/').pop() || 'file');
-        return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}"><a class="file-card" href="${data.file_url}" target="_blank" rel="noopener"><span>📄</span><div><strong>${escapeHtml(fileName)}</strong><div>Open file</div></div></a></div>${safeText ? `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${safeText}</div>` : ''}`;
-    }
-    return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${safeText || '&nbsp;'}</div>`;
-}
-
-function renderBubble(data) {
-    const view = byId('messages-view');
-    if (!view) return;
-
-    const wrap = document.createElement('div');
-    wrap.className = `msg-wrapper ${data.sender_id === state.myID ? 'sent' : 'received'}`;
-    wrap.dataset.msgId = data.id;
-
-    const showSenderAvatar = state.isCurrentChatGroup && data.sender_id !== state.myID;
-    wrap.innerHTML = `
-        ${showSenderAvatar ? '<div class="avatar msg-avatar"></div>' : ''}
-        <div class="msg-stack">
-            ${showSenderAvatar ? `<div class="msg-sender">${escapeHtml(data.sender_name || '')}</div>` : ''}
-            ${messageBodyHtml(data)}
-            <div class="bubble-time">${escapeHtml(data.timestamp || '')}</div>
-        </div>
-    `;
-
-    if (showSenderAvatar) {
-        setAvatar(wrap.querySelector('.msg-avatar'), data.sender_name, data.sender_pfp);
-    }
-
-    view.appendChild(wrap);
-    view.scrollTop = view.scrollHeight;
+  const username = byId('edit-display-name').value.trim();
+  const bio = byId('edit-bio').value.trim();
+  if (!username) return showToast('Display name is required');
+  const res = await fetch('/update_profile', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tele_id: state.myID, username, bio })
+  });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not update profile');
+  state.myName = data.username;
+  state.myBio = data.bio || '';
+  localStorage.setItem('fName', state.myName);
+  localStorage.setItem('fBio', state.myBio);
+  hydrateProfile();
+  closeModal('profile-modal');
+  await loadRecentChats();
+  showToast('Profile updated');
 }
 
 async function loadRecentChats() {
-    if (!state.myID) return;
-    const res = await fetch(`/recent_chats/${encodeURIComponent(state.myID)}`);
-    const chats = await res.json();
-    const list = byId('chat-list');
-    list.innerHTML = '';
-
-    if (!Array.isArray(chats) || chats.length === 0) {
-        list.innerHTML = `<div class="chat-row"><div class="chat-meta"><strong>No chats yet</strong><p>Use search to start chatting.</p></div></div>`;
-        return;
-    }
-
-    chats.forEach((chat) => {
-        const row = document.createElement('div');
-        row.className = 'chat-row';
-        row.dataset.chatId = chat.id;
-        row.dataset.group = String(chat.is_group);
-        row.innerHTML = `
-            <div class="avatar row-avatar"></div>
-            <div class="chat-meta">
-                <strong>${escapeHtml(chat.name)}</strong>
-                <p>${escapeHtml(chat.last_msg || '')}</p>
-            </div>
-            <small class="muted">${escapeHtml(chat.time || '')}</small>
-        `;
-        setAvatar(row.querySelector('.row-avatar'), chat.name, chat.pfp);
-        row.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.is_group);
-        list.appendChild(row);
-    });
+  if (!state.myID) return;
+  const res = await fetch(`/recent_chats/${encodeURIComponent(state.myID)}`);
+  const chats = await res.json();
+  const list = byId('chat-list');
+  list.innerHTML = '';
+  chats.forEach((chat) => {
+    const row = document.createElement('button');
+    row.className = 'chat-row';
+    row.dataset.chatId = chat.id;
+    row.dataset.kind = chat.kind;
+    row.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.kind, chat);
+    row.innerHTML = `
+      <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
+      <div class="chat-meta">
+        <strong>${escapeHtml(chat.name)}</strong>
+        <small class="muted">${escapeHtml(chat.kind === 'private' ? formatPresence(chat.is_online, chat.last_seen_at) : kindLabel(chat.kind))}</small>
+        <p>${escapeHtml(chat.last_msg || '')}</p>
+      </div>
+      <div class="chat-side">
+        <small class="muted">${chat.timestamp ? formatTime(chat.timestamp) : ''}</small>
+        <span class="tag">${chat.kind}</span>
+      </div>`;
+    list.appendChild(row);
+    setAvatar(row.querySelector('.avatar'), chat.name, chat.pfp);
+    if (state.currentTargetID === chat.id && state.currentTargetKind === chat.kind) row.classList.add('active');
+  });
 }
 
-async function sendMsg() {
-    const input = byId('msg-input');
-    if (!input || !state.currentTargetID) return;
-    const val = input.value.trim();
-    if (!val) return;
-
-    const payload = {
-        room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
-        sender_id: state.myID,
-        sender_name: state.myName,
-        target_id: state.currentTargetID,
-        is_group: state.isCurrentChatGroup,
-        msg_type: 'text',
-        content: val,
+async function doSearch() {
+  const q = byId('search-input').value.trim();
+  const sug = byId('suggestions');
+  if (!q) {
+    sug.classList.remove('show');
+    sug.innerHTML = '';
+    return;
+  }
+  const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
+  const items = await res.json();
+  sug.innerHTML = '';
+  items.forEach((item) => {
+    const row = document.createElement('button');
+    row.className = 'suggestion-row';
+    const subtitle = item.type === 'user' ? formatPresence(item.is_online, item.last_seen_at) : (item.description || kindLabel(item.type));
+    row.innerHTML = `<div class="avatar"></div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
+    setAvatar(row.querySelector('.avatar'), item.name, item.pfp);
+    row.onclick = async () => {
+      byId('search-input').value = '';
+      sug.classList.remove('show');
+      await openChat(item.name, item.id, item.pfp, item.type === 'user' ? 'private' : item.type, item);
     };
-    socket.emit('private_message', payload);
-    input.value = '';
+    sug.appendChild(row);
+  });
+  sug.classList.add('show');
+}
+
+async function createGroup() {
+  const name = byId('group-name').value.trim();
+  const code = normalizeHandle(byId('group-code').value);
+  const description = byId('group-description').value.trim();
+  if (!name || !code) return showToast('Fill group name and code');
+  const res = await fetch('/create_group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, description, creator_id: state.myID }) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not create group');
+  closeModal('group-modal');
+  ['group-name', 'group-code', 'group-description'].forEach((id) => byId(id).value = '');
+  await loadRecentChats();
+  await openChat(data.group.name, data.group.code, data.group.pfp, 'group', data.group);
+  showToast('Group created');
+}
+async function joinGroup() {
+  const code = normalizeHandle(byId('group-code').value);
+  if (!code) return showToast('Enter a group code');
+  const res = await fetch('/join_group', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, tele_id: state.myID }) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not join group');
+  closeModal('group-modal');
+  ['group-name', 'group-code', 'group-description'].forEach((id) => byId(id).value = '');
+  await loadRecentChats();
+  await openChat(data.group.name, data.group.code, data.group.pfp, 'group', data.group);
+  showToast('Joined group');
+}
+async function createChannel() {
+  const name = byId('channel-name').value.trim();
+  const code = normalizeHandle(byId('channel-code').value);
+  const description = byId('channel-description').value.trim();
+  if (!name || !code) return showToast('Fill channel name and code');
+  const res = await fetch('/create_channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code, description, owner_id: state.myID }) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not create channel');
+  closeModal('channel-modal');
+  ['channel-name', 'channel-code', 'channel-description'].forEach((id) => byId(id).value = '');
+  await loadRecentChats();
+  await openChat(data.channel.name, data.channel.code, data.channel.pfp, 'channel', data.channel);
+  showToast('Channel created');
+}
+async function joinChannel() {
+  const code = normalizeHandle(byId('channel-code').value);
+  if (!code) return showToast('Enter a channel code');
+  const res = await fetch('/join_channel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, tele_id: state.myID }) });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Could not join channel');
+  closeModal('channel-modal');
+  ['channel-name', 'channel-code', 'channel-description'].forEach((id) => byId(id).value = '');
+  await loadRecentChats();
+  await openChat(data.channel.name, data.channel.code, data.channel.pfp, 'channel', data.channel);
+  showToast('Joined channel');
+}
+
+function renderChatPanel(name, pfp, kind, details = {}) {
+  const panel = byId('chat-panel');
+  const isOwner = kind === 'channel' && details.owner_id === state.myID;
+  panel.className = 'chat-panel glass-card';
+  panel.innerHTML = `
+    <div class="chat-shell">
+      <div class="chat-header">
+        <div class="chat-header-left clickable" onclick="openProfileSheet()">
+          <button class="back-btn mobile-only" onclick="event.stopPropagation(); closeCurrentChat()">←</button>
+          <div id="chat-header-avatar" class="avatar"></div>
+          <div class="chat-header-meta">
+            <strong id="chat-header-name"></strong>
+            <p id="chat-header-status">${escapeHtml(details.status_text || kindLabel(kind))}</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
+        </div>
+      </div>
+      ${kind === 'channel' && !isOwner ? '<div class="channel-banner">Broadcast channel — only the owner can post updates.</div>' : ''}
+      <div id="messages-view" class="messages-view"></div>
+      <div class="typing-indicator" id="typing-indicator"></div>
+      <div class="chat-input-area">
+        <button class="attach-btn" onclick="document.getElementById('media-upload').click()">＋</button>
+        <input type="file" id="media-upload" class="hidden" onchange="uploadMedia(event)">
+        <input type="text" id="msg-input" placeholder="${kind === 'channel' && !isOwner ? 'Read only channel' : 'Type a message'}" ${kind === 'channel' && !isOwner ? 'disabled' : ''}>
+        <button class="send-btn" onclick="sendMsg()" ${kind === 'channel' && !isOwner ? 'disabled' : ''}>➤</button>
+      </div>
+    </div>`;
+  byId('chat-header-name').textContent = name;
+  setAvatar(byId('chat-header-avatar'), name, pfp);
+  const input = byId('msg-input');
+  if (input && !input.disabled) {
+    input.addEventListener('keydown', (event) => { if (event.key === 'Enter') sendMsg(); });
+    input.addEventListener('input', emitTypingPulse);
+  }
+}
+
+async function openChat(name, id, pfp, kind = 'private', preview = {}) {
+  state.currentTargetID = id;
+  state.currentTargetName = name;
+  state.currentTargetPFP = pfp || '';
+  state.currentTargetKind = kind;
+  state.currentStatusText = preview.status_text || kindLabel(kind);
+  renderChatPanel(name, pfp, kind, preview);
+  document.querySelectorAll('.chat-row').forEach((el) => el.classList.toggle('active', el.dataset.chatId === id && el.dataset.kind === kind));
+
+  const room = buildRoom(id, kind);
+  socket.emit('join_chat', { room });
+  const [historyRes, profileRes] = await Promise.all([
+    fetch(`/history/${encodeURIComponent(room)}`),
+    fetch(`/profile/${encodeURIComponent(id)}`),
+  ]);
+  const msgs = await historyRes.json();
+  const profile = await profileRes.json();
+  if (profile.status === 'success') state.profileCache[id] = profile;
+  applyHeaderProfile(profile.status === 'success' ? profile : preview);
+
+  const view = byId('messages-view');
+  view.innerHTML = '';
+  msgs.forEach(renderBubble);
+  view.scrollTop = view.scrollHeight;
+  if (isMobileLayout()) setMobileTab('chat');
+}
+
+function applyHeaderProfile(profile) {
+  if (!profile) return;
+  const statusEl = byId('chat-header-status');
+  if (statusEl) {
+    if (profile.kind === 'user' || state.currentTargetKind === 'private') {
+      statusEl.textContent = formatPresence(profile.is_online, profile.last_seen_at);
+    } else if (profile.kind === 'channel') {
+      statusEl.textContent = `${profile.member_count || 0} subscribers`;
+    } else {
+      statusEl.textContent = `${profile.member_count || 0} members`;
+    }
+  }
+}
+
+function messageBodyHtml(data) {
+  if (data.is_deleted) return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'} deleted">Message deleted</div>`;
+  if (data.msg_type === 'image') return `<div class="image-wrap"><img class="message-media" src="${data.file_url}" alt="${escapeHtml(data.content || 'image')}"></div>`;
+  if (data.msg_type === 'video') return `<div class="video-wrap"><video class="message-media" src="${data.file_url}" controls></video></div>`;
+  if (data.msg_type === 'audio') return `<div class="audio-wrap"><audio src="${data.file_url}" controls></audio></div>`;
+  if (data.msg_type === 'file') return `<a class="file-card" href="${data.file_url}" target="_blank"><span>📄</span><span>${escapeHtml(data.content || 'file')}</span></a>`;
+  return `<div class="bubble ${data.sender_id === state.myID ? 'sent' : 'received'}">${escapeHtml(data.content)}</div>`;
+}
+
+function renderBubble(data) {
+  const view = byId('messages-view');
+  if (!view) return;
+  const sent = data.sender_id === state.myID;
+  const wrap = document.createElement('div');
+  wrap.className = `msg-wrapper ${sent ? 'sent' : 'received'}`;
+  wrap.dataset.msgId = data.id;
+  wrap.innerHTML = `
+    ${sent ? '' : '<div class="avatar small-avatar"></div>'}
+    <div class="msg-stack">
+      ${!sent && state.currentTargetKind !== 'private' ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
+      ${messageBodyHtml(data)}
+      <div class="bubble-time">${formatTime(data.timestamp)}</div>
+    </div>`;
+  if (!sent) setAvatar(wrap.querySelector('.avatar'), data.sender_name, data.sender_pfp);
+  view.appendChild(wrap);
+  view.scrollTop = view.scrollHeight;
+}
+
+function emitTypingPulse() {
+  if (!state.currentTargetID) return;
+  const room = buildRoom(state.currentTargetID, state.currentTargetKind);
+  if (!state.sentTyping) {
+    socket.emit('typing', { room, target_id: state.currentTargetID, tele_id: state.myID, name: state.myName, is_typing: true });
+    state.sentTyping = true;
+  }
+  clearTimeout(state.typingTimer);
+  state.typingTimer = setTimeout(() => stopTyping(), 1200);
+}
+function stopTyping() {
+  if (!state.sentTyping || !state.currentTargetID) return;
+  socket.emit('typing', { room: buildRoom(state.currentTargetID, state.currentTargetKind), target_id: state.currentTargetID, tele_id: state.myID, name: state.myName, is_typing: false });
+  state.sentTyping = false;
+}
+
+function sendMsg() {
+  const input = byId('msg-input');
+  if (!input || input.disabled) return;
+  const content = input.value.trim();
+  if (!content || !state.currentTargetID) return;
+  const room = buildRoom(state.currentTargetID, state.currentTargetKind);
+  socket.emit('private_message', { room, sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, msg_type: 'text', content });
+  input.value = '';
+  stopTyping();
 }
 
 async function uploadMedia(event) {
-    const file = event.target.files?.[0];
-    if (!file || !state.currentTargetID) return;
-
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await fetch('/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    event.target.value = '';
-
-    if (data.status !== 'success') {
-        showToast(data.message || 'Upload failed');
-        return;
-    }
-
-    socket.emit('private_message', {
-        room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
-        sender_id: state.myID,
-        sender_name: state.myName,
-        target_id: state.currentTargetID,
-        is_group: state.isCurrentChatGroup,
-        msg_type: data.type,
-        content: file.name,
-        file_url: data.url,
-    });
+  const file = event.target.files?.[0];
+  if (!file || !state.currentTargetID) return;
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch('/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  event.target.value = '';
+  if (data.status !== 'success') return showToast(data.message || 'Upload failed');
+  socket.emit('private_message', { room: buildRoom(state.currentTargetID, state.currentTargetKind), sender_id: state.myID, sender_name: state.myName, target_id: state.currentTargetID, msg_type: data.type, content: file.name, file_url: data.url });
 }
 
 async function uploadPFP(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('type', 'pfp');
-    fd.append('tele_id', state.myID);
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('file', file); fd.append('type', 'pfp'); fd.append('tele_id', state.myID);
+  const res = await fetch('/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  event.target.value = '';
+  if (data.status !== 'success') return showToast(data.message || 'Profile photo upload failed');
+  state.myPFP = data.url;
+  localStorage.setItem('fPFP', state.myPFP);
+  hydrateProfile();
+  await loadRecentChats();
+  showToast('Profile photo updated');
+}
 
-    const res = await fetch('/upload', { method: 'POST', body: fd });
-    const data = await res.json();
-    event.target.value = '';
-
-    if (data.status !== 'success') {
-        showToast(data.message || 'Profile photo upload failed');
-        return;
-    }
-
-    state.myPFP = data.url;
-    localStorage.setItem('fPFP', state.myPFP);
-    hydrateProfile();
-    await loadRecentChats();
-    if (state.currentTargetID) {
-        await openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup);
-    }
-    showToast('Profile photo updated');
+async function openProfileSheet() {
+  if (!state.currentTargetID) return;
+  let profile = state.profileCache[state.currentTargetID];
+  if (!profile) {
+    const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}`);
+    profile = await res.json();
+    if (profile.status === 'success') state.profileCache[state.currentTargetID] = profile;
+  }
+  if (profile.status !== 'success') return showToast('Could not open profile');
+  const sheet = byId('chat-profile-sheet');
+  byId('sheet-name').textContent = profile.username || profile.name || state.currentTargetName;
+  byId('sheet-handle').textContent = `@${profile.tele_id || state.currentTargetID}`;
+  byId('sheet-kind').textContent = kindLabel(profile.kind === 'user' ? 'private' : profile.kind);
+  byId('sheet-status').textContent = profile.kind === 'user' ? formatPresence(profile.is_online, profile.last_seen_at) : `${profile.member_count || 0} ${profile.kind === 'channel' ? 'subscribers' : 'members'}`;
+  byId('sheet-bio').textContent = profile.bio || profile.description || 'No bio yet.';
+  setAvatar(byId('sheet-avatar'), profile.username || profile.name, profile.pfp);
+  sheet.classList.remove('hidden');
+}
+function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
+function copyChatIdentity() {
+  if (!state.currentTargetID) return;
+  navigator.clipboard.writeText(`@${state.currentTargetID}`);
+  showToast('ID copied');
 }
 
 socket.on('new_message', (data) => {
-    const activeRoom = state.currentTargetID ? buildRoom(state.currentTargetID, state.isCurrentChatGroup) : '';
-    if (data.room === activeRoom) renderBubble(data);
+  const activeRoom = state.currentTargetID ? buildRoom(state.currentTargetID, state.currentTargetKind) : '';
+  if (data.room === activeRoom) renderBubble(data);
 });
-
 socket.on('ping_radar', () => loadRecentChats());
 socket.on('message_deleted', (data) => {
-    const msgEl = document.querySelector(`[data-msg-id="${data.msg_id}"]`);
-    if (!msgEl) return;
-    const stack = msgEl.querySelector('.msg-stack');
-    const isSent = msgEl.classList.contains('sent');
-    stack.innerHTML = `<div class="bubble ${isSent ? 'sent' : 'received'} deleted">Message deleted</div><div class="bubble-time"></div>`;
+  const msgEl = document.querySelector(`[data-msg-id="${data.msg_id}"] .msg-stack`);
+  if (msgEl) msgEl.innerHTML = `<div class="bubble deleted">Message deleted</div><div class="bubble-time"></div>`;
 });
+socket.on('typing', (data) => {
+  const room = state.currentTargetID ? buildRoom(state.currentTargetID, state.currentTargetKind) : '';
+  if (data.room !== room || data.tele_id === state.myID) return;
+  const el = byId('typing-indicator');
+  if (!el) return;
+  el.textContent = data.is_typing ? `${data.name || 'Someone'} is typing...` : '';
+});
+socket.on('presence_update', (data) => {
+  if (state.currentTargetKind === 'private' && data.tele_id === state.currentTargetID) {
+    const statusEl = byId('chat-header-status');
+    if (statusEl) statusEl.textContent = formatPresence(data.is_online, data.last_seen_at);
+    const sheetStatus = byId('sheet-status');
+    if (sheetStatus && !byId('chat-profile-sheet').classList.contains('hidden')) sheetStatus.textContent = formatPresence(data.is_online, data.last_seen_at);
+  }
+  loadRecentChats();
+});
+socket.on('action_error', (data) => showToast(data.message || 'Action failed'));
 
 window.addEventListener('click', (event) => {
-    const suggestions = byId('suggestions');
-    if (!event.target.closest('.search-wrap')) {
-        suggestions.classList.remove('show');
-    }
-    if (event.target.classList.contains('modal')) {
-        event.target.classList.add('hidden');
-    }
+  if (!event.target.closest('.search-wrap')) byId('suggestions').classList.remove('show');
+  if (event.target.classList.contains('modal')) event.target.classList.add('hidden');
 });
+window.addEventListener('beforeunload', () => { if (state.myID) socket.emit('presence_offline', { my_id: state.myID }); });
+window.addEventListener('resize', () => setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : (isMobileLayout() ? state.mobileTab : 'chats')));
 
-if (state.myID) {
-    startSession();
-}
-
-
-maybeShowMobileTabs();
+if (state.myID) startSession();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FaelChat</title>
+    <title>FaelChat Ultimate</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,13 +23,11 @@
                         <p id="auth-subtitle">Log in with your @username and password.</p>
                     </div>
                 </div>
-
                 <div class="auth-form">
                     <div id="display-name-wrap" class="input-group hidden">
                         <label>Display name</label>
                         <input id="aname" class="base-input" placeholder="Your display name">
                     </div>
-
                     <div class="input-group">
                         <label>@Username</label>
                         <div class="handle-wrap">
@@ -37,13 +35,11 @@
                             <input id="aid" class="base-input handle-input" placeholder="fael" autocomplete="username">
                         </div>
                     </div>
-
                     <div class="input-group">
                         <label>Password</label>
                         <input id="apass" class="base-input" type="password" placeholder="Enter password" autocomplete="current-password">
                     </div>
                 </div>
-
                 <button id="abtn" class="base-btn" onclick="handleAuth()">Log In</button>
                 <button class="switch-auth" onclick="toggleAuth()">
                     <span id="auth-switch-text">Don’t have an account?</span>
@@ -59,12 +55,20 @@
                         <div class="eyebrow">Your space</div>
                         <h2>Chats</h2>
                     </div>
-                    <button class="icon-btn" onclick="openModal('group-modal')">＋</button>
+                    <div class="header-actions compact">
+                        <button class="icon-btn" onclick="openModal('group-modal')">👥</button>
+                        <button class="icon-btn" onclick="openModal('channel-modal')">📣</button>
+                    </div>
                 </div>
 
                 <div class="search-wrap">
-                    <input id="search-input" placeholder="Search @username or group code" oninput="doSearch()" autocomplete="off">
+                    <input id="search-input" placeholder="Search user, group, or channel" oninput="doSearch()" autocomplete="off">
                     <div id="suggestions" class="suggestions"></div>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="quick-chip" onclick="openModal('group-modal')">+ Group</button>
+                    <button class="quick-chip" onclick="openModal('channel-modal')">+ Channel</button>
                 </div>
 
                 <div id="chat-list" class="chat-list"></div>
@@ -74,7 +78,7 @@
                 <div class="empty-center">
                     <div class="empty-icon">💬</div>
                     <h3>Select a chat</h3>
-                    <p>Search a user ID, open a recent chat, or create a group.</p>
+                    <p>Search a user, open a recent chat, create a group, or launch your own channel.</p>
                 </div>
             </section>
 
@@ -93,6 +97,7 @@
                         <div>
                             <h3 id="settings-fullname">Display Name</h3>
                             <p id="settings-id">@username</p>
+                            <small id="settings-bio" class="muted">No bio yet</small>
                         </div>
                     </div>
                     <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
@@ -107,6 +112,14 @@
                     <button class="telegram-row" onclick="openModal('profile-modal')">
                         <span class="row-icon pink">✎</span>
                         <span>Edit Profile</span>
+                    </button>
+                    <button class="telegram-row" onclick="openModal('group-modal')">
+                        <span class="row-icon pink">👥</span>
+                        <span>Create Group</span>
+                    </button>
+                    <button class="telegram-row" onclick="openModal('channel-modal')">
+                        <span class="row-icon pink">📣</span>
+                        <span>Create Channel</span>
                     </button>
                     <button class="telegram-row" onclick="logout()">
                         <span class="row-icon pink">⇥</span>
@@ -157,9 +170,26 @@
             </div>
             <input id="group-name" class="base-input" placeholder="Group name">
             <input id="group-code" class="base-input" placeholder="Group code">
+            <input id="group-description" class="base-input" placeholder="Description (optional)">
             <div class="modal-actions two">
                 <button class="base-btn secondary" onclick="joinGroup()">Join</button>
                 <button class="base-btn" onclick="createGroup()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="channel-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top">
+                <h3>Create or Join Channel</h3>
+                <button class="icon-btn" onclick="closeModal('channel-modal')">✕</button>
+            </div>
+            <input id="channel-name" class="base-input" placeholder="Channel name">
+            <input id="channel-code" class="base-input" placeholder="Channel code">
+            <input id="channel-description" class="base-input" placeholder="Description / announcement intro">
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="joinChannel()">Join</button>
+                <button class="base-btn" onclick="createChannel()">Create</button>
             </div>
         </div>
     </div>
@@ -171,6 +201,7 @@
                 <button class="icon-btn" onclick="closeModal('profile-modal')">✕</button>
             </div>
             <input id="edit-display-name" class="base-input" placeholder="Display name">
+            <textarea id="edit-bio" class="base-input textarea-input" placeholder="Bio"></textarea>
             <button class="base-btn" onclick="saveProfile()">Save Changes</button>
         </div>
     </div>
@@ -185,7 +216,12 @@
                     <h3 id="sheet-name">User</h3>
                     <p id="sheet-handle">@username</p>
                     <span id="sheet-kind" class="badge-pill">Private chat</span>
+                    <small id="sheet-status" class="sheet-subtext">Offline</small>
                 </div>
+            </div>
+            <div class="sheet-bio-wrap">
+                <strong>About</strong>
+                <p id="sheet-bio" class="sheet-subtext">No bio yet.</p>
             </div>
             <div class="telegram-card profile-sheet-actions">
                 <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()">
@@ -202,7 +238,6 @@
     </div>
 
     <div id="toast" class="toast hidden"></div>
-
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
