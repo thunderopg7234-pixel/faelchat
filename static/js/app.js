@@ -67,6 +67,7 @@ const state = {
   selfDestructSeconds: Number(localStorage.getItem('fSelfDestructSeconds') || '0'),
   hiddenPasscode: localStorage.getItem('fHiddenPasscode') || '',
 };
+state.cropper = { mode: '', img: null, fileName: '', mimeType: 'image/png' };
 
 const byId = (id) => document.getElementById(id);
 const escapeHtml = (str = '') => String(str)
@@ -241,7 +242,19 @@ function openProfileSheet() {
   byId('chat-profile-sheet').classList.remove('hidden');
 }
 
-function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
+function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); byId('sheet-more-panel')?.classList.add('hidden'); }
+
+function toggleProfileMore() { byId('sheet-more-panel')?.classList.toggle('hidden'); }
+function openProfileSheetMore() { if (state.currentTargetID === state.myID) { closeProfileSheet(); openModal('profile-modal'); return; } toggleProfileMore(); }
+function focusProfileSearch() { closeProfileSheet(); setTimeout(() => byId('chat-search-input')?.focus(), 80); }
+function openProfileAvatar() {
+  const src = state.currentTargetPFP || state.myPFP || '';
+  if (!src) return showToast('No photo');
+  byId('pfp-viewer-name').textContent = state.currentTargetName || state.myName || 'Profile photo';
+  byId('pfp-viewer-img').src = src;
+  byId('pfp-viewer').classList.remove('hidden');
+}
+function closeProfileAvatar() { byId('pfp-viewer').classList.add('hidden'); }
 function copyChatIdentity() { navigator.clipboard?.writeText(state.currentTargetID || ''); showToast('Copied'); }
 
 async function syncCurrentUser() {
@@ -634,22 +647,98 @@ async function uploadMedia(event) {
   clearReply();
 }
 
-async function uploadPFP(event) {
+function openPfpCropper(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    event.target.value = '';
+    return showToast('Choose an image');
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      state.cropper = { mode: 'pfp', img, fileName: file.name, mimeType: file.type || 'image/png' };
+      byId('crop-zoom').value = '1';
+      byId('crop-x').value = '0';
+      byId('crop-y').value = '0';
+      openModal('image-crop-modal');
+      updateCropper();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function updateCropper() {
+  const canvas = byId('cropper-canvas');
+  const img = state.cropper?.img;
+  if (!canvas || !img) return;
+  const ctx = canvas.getContext('2d');
+  const zoom = Number(byId('crop-zoom')?.value || 1);
+  const shiftX = Number(byId('crop-x')?.value || 0);
+  const shiftY = Number(byId('crop-y')?.value || 0);
+  const size = Math.min(img.width, img.height) / zoom;
+  let sx = (img.width - size) / 2 + shiftX * ((img.width - size) / 2 || 1);
+  let sy = (img.height - size) / 2 + shiftY * ((img.height - size) / 2 || 1);
+  sx = Math.max(0, Math.min(img.width - size, sx));
+  sy = Math.max(0, Math.min(img.height - size, sy));
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, size, size, 0, 0, canvas.width, canvas.height);
+}
+
+function closeImageCropper() {
+  closeModal('image-crop-modal');
+  state.cropper = { mode: '', img: null, fileName: '', mimeType: 'image/png' };
+}
+
+function cropCanvasToBlob(type = 'image/png', quality = 0.92) {
+  return new Promise((resolve) => byId('cropper-canvas')?.toBlob(resolve, type, quality));
+}
+
+async function uploadCroppedPFP() {
+  const blob = await cropCanvasToBlob('image/png', 0.95);
+  if (!blob) return showToast('Could not crop image');
   const fd = new FormData();
-  fd.append('file', file);
+  fd.append('file', new File([blob], 'profile.png', { type: 'image/png' }));
   fd.append('type', 'pfp');
   fd.append('tele_id', state.myID);
   const res = await fetch('/upload', { method: 'POST', body: fd });
   const data = await res.json();
-  event.target.value = '';
   if (data.status !== 'success') return showToast(data.message || 'Profile photo upload failed');
   state.myPFP = data.url;
   localStorage.setItem('fPFP', state.myPFP);
   hydrateProfile();
   await loadRecentChats();
+  closeImageCropper();
   showToast('Profile photo updated');
+}
+
+async function sendCroppedSticker() {
+  if (!state.currentTargetID) return showToast('Open a chat first');
+  const blob = await cropCanvasToBlob('image/webp', 0.92);
+  if (!blob) return showToast('Could not build sticker');
+  const fd = new FormData();
+  fd.append('file', new File([blob], 'sticker.webp', { type: 'image/webp' }));
+  const res = await fetch('/upload', { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.status !== 'success') return showToast(data.message || 'Sticker upload failed');
+  socket.emit('private_message', {
+    room: buildRoom(state.currentTargetID, state.isCurrentChatGroup),
+    sender_id: state.myID,
+    sender_name: state.myName,
+    target_id: state.currentTargetID,
+    is_group: state.isCurrentChatGroup,
+    msg_type: 'image',
+    content: '[sticker]',
+    file_url: data.url,
+    reply_to_id: state.replyTo?.id || null,
+  });
+  closeImageCropper();
+  showToast('Sticker sent');
 }
 
 async function saveProfile() {
@@ -1203,21 +1292,36 @@ openProfileSheet = async function() {
   _oldOpenProfileSheet();
   const card = document.querySelector('#chat-profile-sheet .profile-sheet-card');
   if (!card || !state.currentTargetID) return;
+  byId('sheet-more-panel')?.classList.add('hidden');
+  byId('sheet-name').textContent = state.currentTargetName || 'Profile';
+  byId('sheet-edit-btn').textContent = state.currentTargetID === state.myID ? 'Edit' : 'More';
+  byId('sheet-avatar').onclick = null;
+  setAvatar(byId('sheet-avatar'), state.currentTargetName || 'U', state.currentTargetPFP || '');
+  const hero = byId('sheet-hero');
+  if (hero) hero.style.backgroundImage = '';
   let extraHtml = '';
+  let statusLine = 'last seen recently';
+  let handle = '@' + (state.currentTargetID || 'user');
+  let bio = state.currentTargetBio || 'No bio yet';
+  let kindLabel = state.isCurrentChatGroup ? 'Channel / Group' : 'Private chat';
+  let kindSub = 'Tap avatar to zoom';
+
   if (state.isCurrentChatGroup) {
     try {
       const res = await fetch(`/room_meta/${encodeURIComponent(state.currentTargetID)}`);
       const data = await res.json();
       if (data.status === 'success') {
         const room = data.room;
-        byId('sheet-kind').textContent = `${room.kind}${room.is_verified ? ' · verified' : ''}`;
-        byId('sheet-bio').textContent = room.description || 'No description yet';
-        byId('sheet-handle').textContent = room.public_handle ? '@' + room.public_handle : state.currentTargetID;
+        handle = room.public_handle ? '@' + room.public_handle : state.currentTargetID;
+        bio = room.description || 'No description yet';
+        kindLabel = `${room.kind}${room.is_verified ? ' · verified' : ''}`;
+        kindSub = `${room.member_count || 0} members · ${room.visibility || 'public'}`;
+        statusLine = room.kind === 'channel' ? `${room.member_count || 0} subscribers` : `${room.member_count || 0} members`;
         extraHtml = `<div class="profile-stat-grid">
-          <div class="profile-stat"><span>Subscribers</span><strong>${room.member_count || 0}</strong></div>
           <div class="profile-stat"><span>Visibility</span><strong>${escapeHtml(room.visibility || 'public')}</strong></div>
           <div class="profile-stat"><span>Invite</span><strong>${room.invite_token ? 'Private link' : 'Room code'}</strong></div>
           <div class="profile-stat"><span>Role</span><strong>${escapeHtml(state.currentRole || 'member')}</strong></div>
+          <div class="profile-stat"><span>Saved media</span><strong>Open gallery</strong></div>
         </div>`;
       }
     } catch (e) {}
@@ -1226,10 +1330,12 @@ openProfileSheet = async function() {
       const res = await fetch(`/profile/${encodeURIComponent(state.currentTargetID)}?viewer_id=${encodeURIComponent(state.myID)}`);
       const data = await res.json();
       if (data.status === 'success') {
-        byId('sheet-handle').textContent = '@' + state.currentTargetID;
-        byId('sheet-bio').textContent = data.bio || 'No bio yet';
-        const hero = document.querySelector('.profile-sheet-hero');
-        if (hero) hero.style.backgroundImage = data.banner_url ? `linear-gradient(180deg, rgba(6,19,31,.08), rgba(6,19,31,.42)), url(${data.banner_url})` : '';
+        if (hero) hero.style.backgroundImage = data.banner_url ? `linear-gradient(180deg, rgba(40,167,201,.22), rgba(34,84,126,.68)), url(${data.banner_url})` : 'linear-gradient(180deg, rgba(111,216,255,.55), rgba(74,177,209,.96))';
+        statusLine = data.online ? 'online' : (data.last_seen_label || 'last seen recently');
+        handle = '@' + (data.username || state.currentTargetID || 'user');
+        bio = data.bio || 'No bio yet';
+        kindLabel = data.status_text || 'private profile';
+        kindSub = data.mood || 'Tap avatar to zoom';
         extraHtml = `<div class="profile-stat-grid">
           <div class="profile-stat"><span>Status</span><strong>${escapeHtml(data.status_text || formatRelativeStatus(data.last_seen_label || 'offline'))}</strong></div>
           <div class="profile-stat"><span>Birthday</span><strong>${escapeHtml(data.birthday || '—')}</strong></div>
@@ -1239,6 +1345,11 @@ openProfileSheet = async function() {
       }
     } catch (e) {}
   }
+  byId('sheet-status-line').textContent = statusLine;
+  byId('sheet-handle').textContent = handle;
+  byId('sheet-bio').textContent = bio;
+  byId('sheet-kind').textContent = kindLabel;
+  byId('sheet-kind-sub').textContent = kindSub;
   let mount = card.querySelector('.profile-sheet-extra');
   if (!mount) {
     mount = document.createElement('div');

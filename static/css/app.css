@@ -271,3 +271,47 @@ body{padding:0}
     display:none!important;
   }
 }
+
+/* ---- Telegram profile + cropper patch ---- */
+.telegram-profile-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(460px,calc(100vw - 24px));max-height:min(92dvh,820px);overflow:auto;border-radius:34px;background:var(--card-strong);box-shadow:var(--shadow);border:1px solid rgba(255,255,255,.24)}
+.telegram-profile-hero{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;min-height:330px;padding:18px 18px 20px;background:linear-gradient(180deg, rgba(111,216,255,.55), rgba(74,177,209,.95));color:#fff;text-align:center}
+.telegram-profile-topbar{position:absolute;top:18px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;z-index:2}
+.profile-nav-btn{min-width:54px;height:54px;padding:0 18px;border:none;border-radius:18px;background:rgba(255,255,255,.18);backdrop-filter:blur(10px);color:#fff;font-size:1.25rem;font-weight:800;box-shadow:0 10px 30px rgba(0,0,0,.12)}
+.profile-nav-btn.ghost{font-size:1rem}
+.sheet-avatar-btn{border:none;background:transparent;padding:0;cursor:pointer}
+.telegram-avatar.avatar.large{width:112px;height:112px;border-radius:999px;border:4px solid rgba(255,255,255,.72);box-shadow:0 14px 34px rgba(0,0,0,.22);font-size:2.5rem;color:#fff;background-color:rgba(255,255,255,.18)}
+.telegram-profile-meta h3{font-size:2rem;color:#fff;text-shadow:0 8px 24px rgba(0,0,0,.16)}
+.telegram-profile-meta p{font-size:1.1rem;color:rgba(255,255,255,.92)}
+.telegram-profile-action-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;width:100%;margin-top:14px}
+.telegram-profile-action{border:none;border-radius:22px;background:rgba(255,255,255,.10);color:#fff;padding:14px 6px;display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:800;backdrop-filter:blur(10px)}
+.telegram-profile-action span{font-size:1.7rem;line-height:1}
+.profile-sheet-info-card{margin:16px 18px;border-radius:28px;padding:0;overflow:hidden;background:var(--card-strong)}
+.profile-info-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px}
+.profile-info-row.stacked{display:block}
+.profile-info-row strong{display:block;font-size:.98rem;margin-bottom:6px}
+.profile-info-row p{margin:0;font-size:1.05rem;color:var(--text);word-break:break-word}
+.profile-info-divider{height:1px;background:var(--line);margin:0 20px}
+.icon-btn.tiny{width:34px;height:34px;border-radius:12px;font-size:.9rem}
+.telegram-profile-tabs{display:flex;gap:10px;overflow:auto;padding:0 18px 16px}
+.profile-more-panel{margin-top:16px}
+.profile-sheet-extra{padding:0 0 20px}
+.pfp-viewer{position:fixed;inset:0;z-index:140;background:rgba(0,0,0,.94)}
+.pfp-viewer-backdrop{position:absolute;inset:0}
+.pfp-viewer-shell{position:relative;z-index:1;height:100%;display:flex;flex-direction:column}
+.pfp-viewer-topbar{display:flex;align-items:center;gap:14px;padding:16px 16px calc(10px + env(safe-area-inset-top));color:#fff;font-weight:700}
+.pfp-viewer-body{flex:1;display:grid;place-items:center;padding:18px}
+.pfp-viewer-body img{max-width:100%;max-height:100%;border-radius:24px;box-shadow:0 20px 70px rgba(0,0,0,.45)}
+.cropper-card{max-width:560px}
+.cropper-stage{display:grid;place-items:center;padding:10px 0 18px}
+#cropper-canvas{width:min(84vw,320px);height:min(84vw,320px);border-radius:28px;background:#111;box-shadow:0 18px 40px rgba(0,0,0,.18)}
+.cropper-controls{display:grid;gap:10px}
+.cropper-controls input[type='range']{width:100%}
+.message-media[alt='image']{}
+.bubble .message-media[src$='.webp']{max-width:180px;background:transparent;box-shadow:none}
+@media (max-width:980px){
+  .telegram-profile-card{position:fixed;inset:0;left:0;top:0;transform:none;width:100vw;max-height:100dvh;border-radius:0}
+  .telegram-profile-hero{min-height:300px;padding-top:calc(18px + env(safe-area-inset-top))}
+  .telegram-profile-action-row{gap:8px}
+  .telegram-profile-action{padding:12px 4px;border-radius:18px}
+  .telegram-profile-action span{font-size:1.35rem}
+}

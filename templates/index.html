@@ -111,7 +111,7 @@
                         <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
                         <button class="base-btn secondary" onclick="openModal('profile-modal')">Edit profile</button>
                     </div>
-                    <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="uploadPFP(event)">
+                    <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="openPfpCropper(event)">
                 </div>
 
                 <div class="telegram-card">
@@ -194,18 +194,28 @@
 
     <div id="chat-profile-sheet" class="profile-sheet hidden">
         <div class="profile-sheet-backdrop" onclick="closeProfileSheet()"></div>
-        <div class="profile-sheet-card glass-card">
-            <button class="profile-sheet-close" onclick="closeProfileSheet()">✕</button>
-            <div class="profile-sheet-hero">
-                <div id="sheet-avatar" class="avatar large"></div>
-                <div class="profile-sheet-meta">
+        <div class="profile-sheet-card telegram-profile-card">
+            <div id="sheet-hero" class="profile-sheet-hero telegram-profile-hero">
+                <div class="telegram-profile-topbar">
+                    <button class="profile-nav-btn" onclick="closeProfileSheet()">←</button>
+                    <button id="sheet-edit-btn" class="profile-nav-btn ghost" onclick="openProfileSheetMore()">Edit</button>
+                </div>
+                <button id="sheet-avatar-btn" class="sheet-avatar-btn" onclick="openProfileAvatar()">
+                    <div id="sheet-avatar" class="avatar large telegram-avatar"></div>
+                </button>
+                <div class="profile-sheet-meta telegram-profile-meta">
                     <h3 id="sheet-name">User</h3>
-                    <p id="sheet-handle">@username</p>
-                    <span id="sheet-kind" class="badge-pill">Private chat</span>
-                    <small id="sheet-bio">No bio yet</small>
+                    <p id="sheet-status-line">last seen recently</p>
+                </div>
+                <div id="sheet-action-row" class="telegram-profile-action-row">
+                    <button class="telegram-profile-action" onclick="showToast('Calls UI only for now')"><span>📞</span><strong>call</strong></button>
+                    <button class="telegram-profile-action" onclick="showToast('Video UI only for now')"><span>🎥</span><strong>video</strong></button>
+                    <button class="telegram-profile-action" onclick="toggleMuteCurrentChat()"><span>🔕</span><strong>mute</strong></button>
+                    <button class="telegram-profile-action" onclick="focusProfileSearch()"><span>🔎</span><strong>search</strong></button>
+                    <button class="telegram-profile-action" onclick="toggleProfileMore()"><span>⋯</span><strong>more</strong></button>
                 </div>
             </div>
-            <div class="telegram-card profile-sheet-actions">
+            <div id="sheet-more-panel" class="profile-more-panel hidden telegram-card profile-sheet-actions">
                 <button class="telegram-row" onclick="document.getElementById('media-upload')?.click()"><span class="row-icon pink">📎</span><span>Send media</span></button>
                 <button class="telegram-row" onclick="openMediaGallery()"><span class="row-icon pink">🖼️</span><span>Media gallery</span></button>
                 <button class="telegram-row" onclick="openMembersModal()"><span class="row-icon pink">👥</span><span>Members & Roles</span></button>
@@ -215,6 +225,64 @@
                 <button class="telegram-row" onclick="copyInviteLink()"><span class="row-icon pink">🔗</span><span>Copy invite / room code</span></button>
                 <button class="telegram-row" onclick="toggleBlockCurrentUser()"><span class="row-icon pink">⛔</span><span>Block / Unblock user</span></button>
                 <button class="telegram-row" onclick="closeProfileSheet(); openModal('theme-modal')"><span class="row-icon pink">🎨</span><span>Choose theme</span></button>
+            </div>
+            <div class="telegram-card profile-sheet-info-card">
+                <div class="profile-info-row">
+                    <div>
+                        <strong>username</strong>
+                        <p id="sheet-handle">@username</p>
+                    </div>
+                    <button class="icon-btn tiny" onclick="copyChatIdentity()">⌁</button>
+                </div>
+                <div class="profile-info-divider"></div>
+                <div class="profile-info-row stacked">
+                    <strong>bio</strong>
+                    <p id="sheet-bio">No bio yet</p>
+                </div>
+                <div class="profile-info-divider"></div>
+                <div class="profile-info-row stacked">
+                    <strong id="sheet-kind">Private chat</strong>
+                    <p id="sheet-kind-sub">Tap avatar to zoom</p>
+                </div>
+            </div>
+            <div id="sheet-tabs" class="telegram-profile-tabs">
+                <button class="chip active">Media</button>
+                <button class="chip">Music</button>
+                <button class="chip">Info</button>
+            </div>
+            <div class="profile-sheet-extra"></div>
+        </div>
+    </div>
+
+    <div id="pfp-viewer" class="pfp-viewer hidden">
+        <div class="pfp-viewer-backdrop" onclick="closeProfileAvatar()"></div>
+        <div class="pfp-viewer-shell">
+            <div class="pfp-viewer-topbar">
+                <button class="profile-nav-btn" onclick="closeProfileAvatar()">←</button>
+                <span id="pfp-viewer-name">Profile photo</span>
+            </div>
+            <div class="pfp-viewer-body">
+                <img id="pfp-viewer-img" alt="Profile photo">
+            </div>
+        </div>
+    </div>
+
+    <div id="image-crop-modal" class="modal hidden">
+        <div class="modal-card glass-card wide cropper-card">
+            <div class="modal-top"><h3>Crop photo</h3><button class="icon-btn" onclick="closeImageCropper()">✕</button></div>
+            <div class="cropper-stage"><canvas id="cropper-canvas" width="512" height="512"></canvas></div>
+            <div class="cropper-controls">
+                <label class="modal-label">Zoom <input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1" oninput="updateCropper()"></label>
+                <label class="modal-label">Horizontal <input id="crop-x" type="range" min="-1" max="1" step="0.01" value="0" oninput="updateCropper()"></label>
+                <label class="modal-label">Vertical <input id="crop-y" type="range" min="-1" max="1" step="0.01" value="0" oninput="updateCropper()"></label>
+            </div>
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="closeImageCropper()">Cancel</button>
+                <button class="base-btn" onclick="uploadCroppedPFP()">Save photo</button>
+            </div>
+            <div class="modal-actions two">
+                <button class="base-btn secondary" onclick="sendCroppedSticker()">Send as sticker</button>
+                <button class="base-btn secondary" onclick="document.getElementById('pfp-upload')?.click()">Choose another</button>
             </div>
         </div>
     </div>
