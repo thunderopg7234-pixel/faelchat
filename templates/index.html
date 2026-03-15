@@ -12,7 +12,7 @@
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/felchat-icon.svg') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/felchat-icon-192.png') }}">
-    <title>FaelChat Premium Ultimate</title>
+    <title>FaelChat Ultimate</title>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -64,7 +64,6 @@
                     <div>
                         <div class="eyebrow">Your space</div>
                         <h2>Chats</h2>
-                        <p class="sidebar-caption">Clean, fast, premium messaging.</p>
                     </div>
                     <div class="header-actions compact">
                         <button class="icon-btn" onclick="openModal('group-modal')">👥</button>
@@ -87,9 +86,9 @@
 
             <section id="chat-panel" class="chat-panel glass-card empty-state">
                 <div class="empty-center">
-                    <div class="empty-icon">✦</div>
-                    <h3>Your premium inbox</h3>
-                    <p>Pick a chat, discover people, run groups, or broadcast through channels in one polished space.</p>
+                    <div class="empty-icon">💬</div>
+                    <h3>Select a chat</h3>
+                    <p>Search a user, open a recent chat, create a group, or launch your own channel.</p>
                 </div>
             </section>
 
@@ -136,6 +135,20 @@
                         <span class="row-icon pink">⇥</span>
                         <span>Log Out</span>
                     </button>
+                </div>
+
+
+
+                <div class="telegram-card theme-settings-card">
+                    <div class="section-title-wrap">
+                        <div>
+                            <div class="eyebrow">Appearance</div>
+                            <h3>Theme Studio</h3>
+                        </div>
+                        <span class="badge-pill" id="theme-current-pill">Default</span>
+                    </div>
+                    <p class="theme-copy muted">Switch FelChat live and keep your favorite look saved on this device.</p>
+                    <div id="theme-grid" class="theme-grid"></div>
                 </div>
 
                 <div class="telegram-card account-card">

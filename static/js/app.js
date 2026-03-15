@@ -20,6 +20,14 @@ const state = {
   theme: localStorage.getItem('fTheme') || 'default',
 };
 
+const THEMES = {
+  default: { label: 'Aurora Glass', meta: '#0f172a', note: 'Glassy purple-teal premium' },
+  midnight: { label: 'Midnight Cyan', meta: '#06101f', note: 'Dark luxury with cyan glow' },
+  ocean: { label: 'Ocean Blue', meta: '#215b9f', note: 'Telegram-style clean blue' },
+  royal: { label: 'Royal Violet', meta: '#5b21b6', note: 'Bold purple flagship look' },
+  emerald: { label: 'Emerald Luxe', meta: '#0f766e', note: 'Fresh premium green-teal' },
+};
+
 const byId = (id) => document.getElementById(id);
 
 function saveUnread() { localStorage.setItem('fUnread', JSON.stringify(state.unread)); }
@@ -33,23 +41,32 @@ function clearUnread(room) {
   delete state.unread[room];
   saveUnread();
 }
+function updateThemeMeta(theme) {
+  const color = THEMES[theme]?.meta || '#0f172a';
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', color);
+}
+function renderThemeOptions() {
+  const grid = byId('theme-grid');
+  if (!grid) return;
+  grid.innerHTML = Object.entries(THEMES).map(([key, cfg]) => `
+    <button class="theme-option ${state.theme === key ? 'active' : ''}" type="button" onclick="applyTheme('${key}')">
+      <div class="theme-preview theme-swatch-${key}"></div>
+      <strong>${cfg.label}</strong>
+      <small>${cfg.note}</small>
+    </button>`).join('');
+  const pill = byId('theme-current-pill');
+  if (pill) pill.textContent = THEMES[state.theme]?.label || 'Theme';
+}
 function applyTheme(theme = state.theme) {
+  theme = THEMES[theme] ? theme : 'default';
   state.theme = theme;
   localStorage.setItem('fTheme', theme);
   document.body.dataset.theme = theme;
-  const btn = byId('theme-toggle-btn');
-  if (btn) btn.textContent = theme === 'midnight' ? '☀️ Light look' : '🌙 Midnight';
+  updateThemeMeta(theme);
+  renderThemeOptions();
 }
 function ensureUtilityButtons() {
-  const settingsTop = document.querySelector('.settings-top');
-  if (settingsTop && !byId('theme-toggle-btn')) {
-    const btn = document.createElement('button');
-    btn.id = 'theme-toggle-btn';
-    btn.className = 'base-btn secondary theme-toggle';
-    btn.type = 'button';
-    btn.onclick = () => applyTheme(state.theme === 'midnight' ? 'default' : 'midnight');
-    settingsTop.appendChild(btn);
-  }
+  renderThemeOptions();
   applyTheme(state.theme);
 }
 function ensureInstallBanner() {
@@ -272,10 +289,7 @@ async function loadRecentChats() {
     row.dataset.kind = chat.kind;
     row.onclick = () => openChat(chat.name, chat.id, chat.pfp, chat.kind, chat);
     row.innerHTML = `
-      <div class="avatar-stack">
-        <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
-        ${chat.kind === 'private' && chat.is_online ? '<span class="presence-dot"></span>' : ''}
-      </div>
+      <div class="avatar" id="avatar-${chat.kind}-${chat.id}"></div>
       <div class="chat-meta">
         <strong>${escapeHtml(chat.name)}</strong>
         <small class="muted">${escapeHtml(chat.kind === 'private' ? formatPresence(chat.is_online, chat.last_seen_at) : kindLabel(chat.kind))}</small>
@@ -323,7 +337,7 @@ async function doSearch() {
     const row = document.createElement('button');
     row.className = 'suggestion-row';
     const subtitle = item.type === 'user' ? formatPresence(item.is_online, item.last_seen_at) : (item.description || kindLabel(item.type));
-    row.innerHTML = `<div class="avatar-stack"><div class="avatar"></div>${item.type === 'user' && item.is_online ? '<span class="presence-dot"></span>' : ''}</div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
+    row.innerHTML = `<div class="avatar"></div><div class="chat-meta"><strong>${escapeHtml(item.name)}</strong><small class="muted">${escapeHtml(item.type)}</small><p>${escapeHtml(subtitle)}</p></div>`;
     setAvatar(row.querySelector('.avatar'), item.name, item.pfp);
     row.onclick = async () => {
       byId('search-input').value = '';
