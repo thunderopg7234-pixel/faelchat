@@ -244,6 +244,30 @@ function openProfileSheet() {
 function closeProfileSheet() { byId('chat-profile-sheet').classList.add('hidden'); }
 function copyChatIdentity() { navigator.clipboard?.writeText(state.currentTargetID || ''); showToast('Copied'); }
 
+async function syncCurrentUser() {
+  if (!state.myID || !state.myName) return;
+  try {
+    await fetch('/ensure_user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tele_id: state.myID,
+        username: state.myName,
+        pfp: state.myPFP || '',
+        bio: state.myBio || '',
+        theme: state.myTheme || 'midnight-cyan',
+        status_text: state.myStatusText || '',
+        banner_url: state.myBannerUrl || '',
+        profile_music: state.myProfileMusic || '',
+        mood: state.myMood || '',
+        birthday: state.myBirthday || ''
+      })
+    });
+  } catch (e) {
+    console.warn('ensure_user failed', e);
+  }
+}
+
 async function startSession() {
   byId('auth-screen').classList.add('hidden');
   byId('main-app').classList.remove('hidden');
@@ -251,7 +275,8 @@ async function startSession() {
   hydrateProfile();
   renderThemeCards();
   applyTheme(state.myTheme, false);
-  socket.emit('connect_radar', { my_id: state.myID });
+  await syncCurrentUser();
+  socket.emit('connect_radar', { my_id: state.myID, username: state.myName });
   await loadPrivacySettings();
   await loadRecentChats();
   maybeLockApp();
@@ -314,7 +339,7 @@ async function doSearch() {
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
-  const rows = await res.json();
+  const rows = (await res.json()).filter((item) => !(item.type === 'user' && normalizeHandle(item.id || '') === normalizeHandle(state.myID || '')));
   suggestions.classList.add('show');
   suggestions.innerHTML = rows.length ? rows.map((item) => {
     const label = item.type === 'user' ? formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline')) : (item.type === 'channel' ? 'Read-only by default' : 'Group room');
@@ -1126,7 +1151,7 @@ doSearch = async function() {
     return;
   }
   const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
-  const rows = await res.json();
+  const rows = (await res.json()).filter((item) => !(item.type === 'user' && normalizeHandle(item.id || '') === normalizeHandle(state.myID || '')));
   suggestions.classList.add('show');
   suggestions.innerHTML = rows.length ? rows.map((item) => {
     const label = item.type === 'user'

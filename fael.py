@@ -408,6 +408,42 @@ def room_meta_for_code(code: str):
     }
 
 
+def upsert_user(tele_id: str, username: str = '', password: str | None = None, pfp: str = '', bio: str = '', theme: str = '', status_text: str = '', banner_url: str = '', profile_music: str = '', mood: str = '', birthday: str = '') -> User | None:
+    tele_id = normalize_handle(tele_id)
+    username = (username or '').strip()
+    if not tele_id:
+        return None
+    user = User.query.filter_by(tele_id=tele_id).first()
+    if not user:
+        user = User(tele_id=tele_id, username=username or tele_id, password=password or '')
+        db.session.add(user)
+    if username:
+        user.username = username[:50]
+    elif not user.username:
+        user.username = tele_id
+    if password is not None and password and not user.password:
+        user.password = password[:50]
+    if pfp:
+        user.pfp = pfp[:255]
+    if bio is not None:
+        user.bio = (bio or '')[:280]
+    if theme:
+        user.theme = theme[:32]
+    if status_text is not None:
+        user.status_text = (status_text or '')[:120]
+    if banner_url is not None:
+        user.banner_url = (banner_url or '')[:255]
+    if profile_music is not None:
+        user.profile_music = (profile_music or '')[:120]
+    if mood is not None:
+        user.mood = (mood or '')[:60]
+    if birthday is not None:
+        user.birthday = (birthday or '')[:20]
+    user.last_seen_at = datetime.utcnow()
+    db.session.commit()
+    return user
+
+
 # ---------- routes ----------
 @app.route('/')
 def index():
@@ -424,9 +460,7 @@ def signup():
         return json_error('Fill all fields')
     if User.query.filter_by(tele_id=tele_id).first():
         return json_error('ID already taken!')
-    user = User(username=username, tele_id=tele_id, password=password, last_seen_at=datetime.utcnow())
-    db.session.add(user)
-    db.session.commit()
+    user = upsert_user(tele_id=tele_id, username=username, password=password)
     return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '', 'theme': user.theme or 'midnight-cyan', 'privacy_last_seen': user.privacy_last_seen or 'everyone', 'status_text': user.status_text or '', 'banner_url': user.banner_url or '', 'profile_music': user.profile_music or '', 'mood': user.mood or '', 'birthday': user.birthday or ''})
 
 
@@ -438,6 +472,8 @@ def login():
     user = User.query.filter_by(tele_id=tele_id, password=password).first()
     if not user:
         return json_error('Invalid credentials', 401)
+    user.last_seen_at = datetime.utcnow()
+    db.session.commit()
     return jsonify({
         'status': 'success',
         'username': user.username,
@@ -453,35 +489,114 @@ def login():
     })
 
 
+@app.route('/ensure_user', methods=['POST'])
+def ensure_user_route():
+    data = request.json or {}
+    tele_id = normalize_handle(data.get('tele_id') or '')
+    username = (data.get('username') or '').strip()
+    if not tele_id or not username:
+        return json_error('Missing user identity')
+    user = upsert_user(
+        tele_id=tele_id,
+        username=username,
+        pfp=(data.get('pfp') or '').strip(),
+        bio=(data.get('bio') or '').strip(),
+        theme=(data.get('theme') or '').strip(),
+        status_text=(data.get('status_text') or '').strip(),
+        banner_url=(data.get('banner_url') or '').strip(),
+        profile_music=(data.get('profile_music') or '').strip(),
+        mood=(data.get('mood') or '').strip(),
+        birthday=(data.get('birthday') or '').strip(),
+    )
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id})
+
+
 @app.route('/search_suggestions')
 def search_suggestions():
-    q = normalize_handle(request.args.get('q') or '')
+    raw_q = (request.args.get('q') or '').strip()
+    q = normalize_handle(raw_q)
     my_id = normalize_handle(request.args.get('my_id') or '')
-    if not q:
+    if not raw_q:
         return jsonify([])
-    like_term = f'%{q}%'
-    users = User.query.filter(or_(User.tele_id.ilike(like_term), User.username.ilike(like_term))).order_by(
-        db.case((User.tele_id.ilike(q), 0), (User.tele_id.ilike(f'{q}%'), 1), else_=2), User.username.asc()
-    ).limit(8).all()
-    groups = Group.query.filter(or_(Group.code.ilike(like_term), Group.name.ilike(like_term))).order_by(
-        db.case((Group.code.ilike(q), 0), (Group.code.ilike(f'{q}%'), 1), else_=2), Group.name.asc()
-    ).limit(8).all()
+
+    like_raw = f'%{raw_q}%'
+    like_compact = f'%{q}%'
+
+    users = User.query.filter(
+        User.tele_id != my_id,
+        or_(
+            User.username.ilike(like_raw),
+            User.username.ilike(like_compact),
+            User.tele_id.ilike(like_compact),
+        )
+    ).order_by(
+        db.case(
+            (User.username.ilike(raw_q), 0),
+            (User.username.ilike(f'{raw_q}%'), 1),
+            (User.tele_id.ilike(q), 2),
+            (User.tele_id.ilike(f'{q}%'), 3),
+            else_=4,
+        ),
+        User.username.asc(),
+        User.tele_id.asc(),
+    ).limit(20).all()
+
+    groups = Group.query.filter(
+        or_(
+            Group.name.ilike(like_raw),
+            Group.code.ilike(like_compact),
+            Group.public_handle.ilike(like_compact),
+            Group.description.ilike(like_raw),
+        )
+    ).order_by(
+        db.case(
+            (Group.name.ilike(raw_q), 0),
+            (Group.name.ilike(f'{raw_q}%'), 1),
+            (Group.public_handle.ilike(q), 2),
+            (Group.public_handle.ilike(f'{q}%'), 3),
+            (Group.code.ilike(q), 4),
+            (Group.code.ilike(f'{q}%'), 5),
+            else_=6,
+        ),
+        Group.name.asc(),
+        Group.code.asc(),
+    ).limit(20).all()
+
     results = []
+    seen_keys = set()
     for user in users:
-        if user.tele_id == my_id:
+        key = ('user', user.tele_id)
+        if key in seen_keys:
             continue
+        seen_keys.add(key)
         results.append({
-            'type': 'user', 'name': user.username, 'id': user.tele_id, 'pfp': user.pfp or '', 'bio': user.bio or '',
+            'type': 'user',
+            'name': user.username or user.tele_id,
+            'id': user.tele_id,
+            'pfp': user.pfp or '',
+            'bio': user.bio or '',
             **format_user_status(user, my_id)
         })
+
     joined_codes = {m.group_code for m in GroupMember.query.filter_by(tele_id=my_id).all()} if my_id else set()
     for group in groups:
         if (group.visibility or 'public') == 'private' and group.code not in joined_codes:
             continue
+        key = (group.kind or 'group', group.code)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
         results.append({
-            'type': group.kind, 'name': group.name, 'id': group.code, 'pfp': group.pfp or '', 'description': group.description or '', 'visibility': group.visibility or 'public'
+            'type': group.kind,
+            'name': group.name,
+            'id': group.code,
+            'pfp': group.pfp or '',
+            'description': group.description or '',
+            'visibility': group.visibility or 'public',
+            'public_handle': group.public_handle or ''
         })
-    return jsonify(results[:12])
+
+    return jsonify(results[:24])
 
 
 @app.route('/create_room', methods=['POST'])
@@ -655,7 +770,7 @@ def update_profile():
         return json_error('Fill all fields')
     user = User.query.filter_by(tele_id=tele_id).first()
     if not user:
-        return json_error('User not found', 404)
+        user = upsert_user(tele_id=tele_id, username=username)
     user.username = username
     user.bio = bio
     if theme:
@@ -855,13 +970,17 @@ def privacy(tele_id):
 # ---------- socket events ----------
 @socketio.on('connect_radar')
 def connect_radar(data):
-    my_id = normalize_handle((data or {}).get('my_id') or '')
+    payload = data or {}
+    my_id = normalize_handle(payload.get('my_id') or '')
+    username = (payload.get('username') or '').strip()
     if not my_id:
         return
     join_room(my_id)
     ONLINE_USERS[my_id] = request.sid
     user = User.query.filter_by(tele_id=my_id).first()
-    if user:
+    if not user and username:
+        user = upsert_user(my_id, username=username)
+    elif user:
         user.last_seen_at = datetime.utcnow()
         db.session.commit()
     emit('presence_update', {'tele_id': my_id, 'online': True, 'last_seen_at': datetime.utcnow().isoformat()}, broadcast=True)
