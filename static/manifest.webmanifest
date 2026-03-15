@@ -1,0 +1,14 @@
+{
+  "name": "FelChat",
+  "short_name": "FelChat",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "FaelChat mobile web app",
+  "icons": [
+    {"src": "/static/icons/felchat-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "/static/icons/felchat-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

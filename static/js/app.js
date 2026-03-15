@@ -15,9 +15,79 @@ const state = {
   profileCache: {},
   typingTimer: null,
   sentTyping: false,
+  unread: JSON.parse(localStorage.getItem('fUnread') || '{}'),
+  deferredInstallPrompt: null,
+  theme: localStorage.getItem('fTheme') || 'default',
 };
 
 const byId = (id) => document.getElementById(id);
+
+function saveUnread() { localStorage.setItem('fUnread', JSON.stringify(state.unread)); }
+function markUnread(room, increment = true) {
+  if (!room) return;
+  state.unread[room] = increment ? (Number(state.unread[room] || 0) + 1) : Number(state.unread[room] || 0);
+  saveUnread();
+}
+function clearUnread(room) {
+  if (!room) return;
+  delete state.unread[room];
+  saveUnread();
+}
+function applyTheme(theme = state.theme) {
+  state.theme = theme;
+  localStorage.setItem('fTheme', theme);
+  document.body.dataset.theme = theme;
+  const btn = byId('theme-toggle-btn');
+  if (btn) btn.textContent = theme === 'midnight' ? '☀️ Light look' : '🌙 Midnight';
+}
+function ensureUtilityButtons() {
+  const settingsTop = document.querySelector('.settings-top');
+  if (settingsTop && !byId('theme-toggle-btn')) {
+    const btn = document.createElement('button');
+    btn.id = 'theme-toggle-btn';
+    btn.className = 'base-btn secondary theme-toggle';
+    btn.type = 'button';
+    btn.onclick = () => applyTheme(state.theme === 'midnight' ? 'default' : 'midnight');
+    settingsTop.appendChild(btn);
+  }
+  applyTheme(state.theme);
+}
+function ensureInstallBanner() {
+  if (byId('install-banner')) return;
+  const app = byId('main-app');
+  if (!app) return;
+  const banner = document.createElement('div');
+  banner.id = 'install-banner';
+  banner.className = 'install-banner glass-card hidden';
+  banner.innerHTML = `<div><strong>Install FelChat</strong><p>Open it fullscreen like a real app.</p></div><div class="install-actions"><button class="base-btn secondary mini-btn" id="install-later-btn" type="button">Later</button><button class="base-btn mini-btn" id="install-now-btn" type="button">Install</button></div>`;
+  app.parentNode.insertBefore(banner, app);
+  byId('install-later-btn').onclick = () => banner.classList.add('hidden');
+  byId('install-now-btn').onclick = async () => {
+    if (state.deferredInstallPrompt) {
+      state.deferredInstallPrompt.prompt();
+      try { await state.deferredInstallPrompt.userChoice; } catch (e) {}
+      state.deferredInstallPrompt = null;
+      banner.classList.add('hidden');
+    } else {
+      showToast('Use Add to Home Screen in your browser menu');
+    }
+  };
+}
+function updateInstallBanner() {
+  const banner = byId('install-banner');
+  if (!banner) return;
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  banner.classList.toggle('hidden', standalone || (!state.deferredInstallPrompt && !/iphone|ipad|ipod/i.test(navigator.userAgent)));
+}
+
+if (window.__IS_STANDALONE__) {
+  document.body.classList.add('standalone-mode');
+}
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+  });
+}
 const escapeHtml = (str = '') => String(str)
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -126,6 +196,9 @@ function hydrateProfile() {
   byId('edit-bio').value = state.myBio || '';
   setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
   setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
+  ensureUtilityButtons();
+  ensureInstallBanner();
+  updateInstallBanner();
   setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : 'chats');
 }
 
@@ -207,7 +280,10 @@ async function loadRecentChats() {
       </div>
       <div class="chat-side">
         <small class="muted">${chat.timestamp ? formatTime(chat.timestamp) : ''}</small>
-        <span class="tag">${chat.kind}</span>
+        <div class="chat-side-bottom">
+          <span class="tag">${chat.kind}</span>
+          ${state.unread[buildRoom(chat.id, chat.kind)] ? `<span class="unread-badge">${Math.min(state.unread[buildRoom(chat.id, chat.kind)], 99)}</span>` : ''}
+        </div>
       </div>`;
     list.appendChild(row);
     setAvatar(row.querySelector('.avatar'), chat.name, chat.pfp);
@@ -327,6 +403,7 @@ function renderChatPanel(name, pfp, kind, details = {}) {
           </div>
         </div>
         <div class="header-actions">
+          <button class="icon-btn" onclick="shareCurrentChat()">🔗</button>
           <button class="icon-btn" onclick="document.getElementById('media-upload').click()">📎</button>
         </div>
       </div>
@@ -359,6 +436,7 @@ async function openChat(name, id, pfp, kind = 'private', preview = {}) {
   document.querySelectorAll('.chat-row').forEach((el) => el.classList.toggle('active', el.dataset.chatId === id && el.dataset.kind === kind));
 
   const room = buildRoom(id, kind);
+  clearUnread(room);
   socket.emit('join_chat', { room });
   const [historyRes, profileRes] = await Promise.all([
     fetch(`/history/${encodeURIComponent(room)}`),
@@ -411,9 +489,14 @@ function renderBubble(data) {
     <div class="msg-stack">
       ${!sent && state.currentTargetKind !== 'private' ? `<div class="msg-sender">${escapeHtml(data.sender_name)}</div>` : ''}
       ${messageBodyHtml(data)}
-      <div class="bubble-time">${formatTime(data.timestamp)}</div>
+      <div class="bubble-time">${formatTime(data.timestamp)}${sent ? ' · double tap to delete' : ''}</div>
     </div>`;
   if (!sent) setAvatar(wrap.querySelector('.avatar'), data.sender_name, data.sender_pfp);
+  if (sent && !data.is_deleted) {
+    wrap.addEventListener('dblclick', () => {
+      if (confirm('Delete this message?')) socket.emit('delete_message', { msg_id: data.id, sender_id: state.myID });
+    });
+  }
   view.appendChild(wrap);
   view.scrollTop = view.scrollHeight;
 }
@@ -486,6 +569,7 @@ async function openProfileSheet() {
   byId('sheet-name').textContent = profile.username || profile.name || state.currentTargetName;
   byId('sheet-handle').textContent = `@${profile.tele_id || state.currentTargetID}`;
   byId('sheet-kind').textContent = kindLabel(profile.kind === 'user' ? 'private' : profile.kind);
+  byId('sheet-kind').dataset.code = profile.tele_id || state.currentTargetID;
   byId('sheet-status').textContent = profile.kind === 'user' ? formatPresence(profile.is_online, profile.last_seen_at) : `${profile.member_count || 0} ${profile.kind === 'channel' ? 'subscribers' : 'members'}`;
   byId('sheet-bio').textContent = profile.bio || profile.description || 'No bio yet.';
   setAvatar(byId('sheet-avatar'), profile.username || profile.name, profile.pfp);
@@ -498,9 +582,29 @@ function copyChatIdentity() {
   showToast('ID copied');
 }
 
+
+function shareCurrentChat() {
+  if (!state.currentTargetID) return;
+  const title = `${state.currentTargetName} on FelChat`;
+  const text = state.currentTargetKind === 'private'
+    ? `Chat with @${state.currentTargetID} on FelChat`
+    : `Join ${state.currentTargetKind} @${state.currentTargetID} on FelChat`;
+  if (navigator.share) {
+    navigator.share({ title, text, url: window.location.origin }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text);
+    showToast('Invite text copied');
+  }
+}
+
 socket.on('new_message', (data) => {
   const activeRoom = state.currentTargetID ? buildRoom(state.currentTargetID, state.currentTargetKind) : '';
-  if (data.room === activeRoom) renderBubble(data);
+  if (data.room === activeRoom) {
+    renderBubble(data);
+  } else if (data.sender_id !== state.myID) {
+    markUnread(data.room, true);
+    loadRecentChats();
+  }
 });
 socket.on('ping_radar', () => loadRecentChats());
 socket.on('message_deleted', (data) => {
@@ -531,5 +635,21 @@ window.addEventListener('click', (event) => {
 });
 window.addEventListener('beforeunload', () => { if (state.myID) socket.emit('presence_offline', { my_id: state.myID }); });
 window.addEventListener('resize', () => setMobileTab(state.currentTargetID && isMobileLayout() ? 'chat' : (isMobileLayout() ? state.mobileTab : 'chats')));
+
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  state.deferredInstallPrompt = event;
+  updateInstallBanner();
+});
+window.addEventListener('appinstalled', () => {
+  state.deferredInstallPrompt = null;
+  updateInstallBanner();
+  showToast('FelChat installed');
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state.myID) socket.emit('presence_online', { my_id: state.myID });
+});
+applyTheme(state.theme);
 
 if (state.myID) startSession();

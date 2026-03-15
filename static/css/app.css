@@ -19,6 +19,19 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; font-family: 'Inter', sans-serif; color: var(--text); }
+
+html {
+    height: 100%;
+    background: linear-gradient(135deg, var(--bg-1), var(--bg-2) 42%, var(--bg-3));
+}
+body {
+    min-height: 100dvh;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+}
+body.standalone-mode .app-shell {
+    padding-top: max(12px, env(safe-area-inset-top));
+}
 body {
     background:
         radial-gradient(circle at top left, rgba(45, 212, 191, 0.28), transparent 28%),
@@ -525,7 +538,14 @@ h1, h2, h3, p { margin: 0; }
 
 @media (max-width: 980px) {
   html, body { height: 100%; overflow: hidden; }
-  .app-shell { height: 100dvh; padding: 12px; overflow: hidden; }
+  .app-shell {
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+    overflow: hidden;
+  }
+  body.standalone-mode .app-shell {
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
   .main-app {
     grid-template-columns: 1fr;
     gap: 0;
@@ -599,4 +619,74 @@ textarea.base-input.textarea-input { min-height: 110px; resize: vertical; }
 @media (max-width: 980px) {
   .channel-banner { margin: 10px 10px 0; }
   .typing-indicator { padding: 0 14px 8px; }
+}
+
+
+.install-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 22px;
+    margin-bottom: 14px;
+}
+.install-banner p { color: var(--muted); margin-top: 4px; }
+.install-actions { display: flex; gap: 10px; align-items: center; }
+.mini-btn { width: auto; padding: 10px 14px; border-radius: 12px; }
+.theme-toggle { width: auto; margin-left: auto; }
+.chat-side-bottom { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 8px; }
+.unread-badge {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    display: inline-grid;
+    place-items: center;
+    background: linear-gradient(135deg, #22c55e, #14b8a6);
+    color: white;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+body[data-theme='midnight'] {
+    --card: rgba(15, 23, 42, 0.76);
+    --card-strong: rgba(15, 23, 42, 0.94);
+    --text: #e5eefb;
+    --muted: #94a3b8;
+    --line: rgba(148, 163, 184, 0.18);
+    --recv: rgba(30, 41, 59, 0.96);
+    --surface: rgba(15, 23, 42, 0.56);
+    background:
+        radial-gradient(circle at top left, rgba(45, 212, 191, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(139, 92, 246, 0.16), transparent 24%),
+        linear-gradient(135deg, #020617, #111827 42%, #0f172a);
+}
+body[data-theme='midnight'] .base-input,
+body[data-theme='midnight'] .search-wrap input,
+body[data-theme='midnight'] .handle-wrap,
+body[data-theme='midnight'] .bubble.received,
+body[data-theme='midnight'] .chat-row,
+body[data-theme='midnight'] .suggestion-row,
+body[data-theme='midnight'] .telegram-row,
+body[data-theme='midnight'] .icon-btn,
+body[data-theme='midnight'] .chat-header,
+body[data-theme='midnight'] .chat-input-area,
+body[data-theme='midnight'] .sidebar,
+body[data-theme='midnight'] .settings-panel,
+body[data-theme='midnight'] .chat-panel,
+body[data-theme='midnight'] .modal-card,
+body[data-theme='midnight'] .profile-sheet-card {
+    background: rgba(15, 23, 42, 0.88) !important;
+    color: var(--text);
+}
+body[data-theme='midnight'] .chat-meta p,
+body[data-theme='midnight'] .chat-meta small,
+body[data-theme='midnight'] .eyebrow,
+body[data-theme='midnight'] .sheet-subtext,
+body[data-theme='midnight'] .bubble-time,
+body[data-theme='midnight'] #auth-subtitle { color: var(--muted); }
+@media (max-width: 980px) {
+    .install-banner { flex-direction: column; align-items: flex-start; }
+    .install-actions { width: 100%; }
+    .mini-btn { flex: 1; }
 }
