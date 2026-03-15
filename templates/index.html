@@ -213,11 +213,23 @@ body, html {
     let activeMessageId = null;
     let activeMessageContent = "";
 
-    if(myID) {
+        if(myID) {
         document.getElementById('auth-screen').style.display = 'none';
         socket.emit('connect_radar', {my_id: myID});
         loadRecentChats();
+        
+        // --- NEW: Load Settings Profile Data ---
+        document.getElementById('settings-fullname').innerText = myName;
+        const savedPfp = localStorage.getItem('fPfp');
+        const pfpIcon = document.getElementById('settings-pfp-icon');
+        if (savedPfp) {
+            pfpIcon.style.backgroundImage = `url(${savedPfp})`;
+            pfpIcon.innerText = '';
+        } else {
+            pfpIcon.innerText = myName ? myName.charAt(0) : '?';
+        }
     }
+
 
     function doSearch() {
         const q = document.getElementById('search-input').value;
