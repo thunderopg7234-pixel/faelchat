@@ -102,20 +102,23 @@ class ChannelMember(db.Model):
 
 def ensure_schema():
     db.create_all()
-    inspector = inspect(db.engine)
+
+    def q(identifier: str) -> str:
+        return '"' + identifier.replace('"', '""') + '"'
 
     def add_column_if_missing(table_name: str, column_name: str, ddl: str):
+        inspector = inspect(db.engine)
         current = {col['name'] for col in inspector.get_columns(table_name)}
         if column_name in current:
             return
         with db.engine.begin() as conn:
-            conn.execute(text(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}'))
+            conn.execute(text(f'ALTER TABLE {q(table_name)} ADD COLUMN {q(column_name)} {ddl}'))
 
-    add_column_if_missing('user', 'bio', "VARCHAR(280) DEFAULT ''")
-    add_column_if_missing('user', 'is_online', 'BOOLEAN DEFAULT FALSE')
-    add_column_if_missing('user', 'last_seen_at', 'DATETIME')
-    add_column_if_missing('group', 'description', "VARCHAR(280) DEFAULT ''")
-    add_column_if_missing('group', 'owner_id', "VARCHAR(50) DEFAULT ''")
+    add_column_if_missing(User.__tablename__, 'bio', "VARCHAR(280) DEFAULT ''")
+    add_column_if_missing(User.__tablename__, 'is_online', 'BOOLEAN DEFAULT FALSE')
+    add_column_if_missing(User.__tablename__, 'last_seen_at', 'TIMESTAMP NULL')
+    add_column_if_missing(Group.__tablename__, 'description', "VARCHAR(280) DEFAULT ''")
+    add_column_if_missing(Group.__tablename__, 'owner_id', "VARCHAR(50) DEFAULT ''")
 
 
 with app.app_context():
