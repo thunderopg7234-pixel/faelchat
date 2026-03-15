@@ -1482,7 +1482,7 @@ function godlyActionButtons(data, sent) {
     <button onclick="openForwardModal(${data.id})">Forward</button>
     <button onclick="saveMessageById(${data.id})">Save</button>
     <button onclick="translateMessageById(${data.id})">Translate</button>
-    ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button onclick="deleteMyMessage(${data.id})">Delete</button>` : ''}
+    ${sent && !data.is_deleted ? `<button onclick="editMyMessage(${data.id})">Edit</button><button class="danger-action" onclick="deleteMyMessage(${data.id})">Delete</button>` : `<button class="danger-action" onclick="deleteMessageFromView(${data.id})">Delete</button>`}
     ${state.isCurrentChatGroup && ['owner','admin'].includes(state.currentRole) ? `<button onclick="pinMessage(${data.id})">Pin</button>` : ''}
   `;
 }
@@ -1829,48 +1829,83 @@ openProfileSheet = function(){
 };
 
 
-// ---- interaction hardening patch ----
-(function(){
+function deleteMessageFromView(id) {
+  const wrap = document.querySelector(`.msg-wrapper[data-msg-id="${id}"]`);
+  if (!wrap) return;
+  if (!confirm('Delete this message from your view?')) return;
+  wrap.remove();
+  delete state.messageCache[id];
+  state.messageActionOpenId = null;
+  showToast('Message removed');
+}
+
+(function setupInteractionGuards(){
   let lastTouchEnd = 0;
-  document.addEventListener('touchend', function(event){
+  document.addEventListener('touchend', function (event) {
     const now = Date.now();
-    if (now - lastTouchEnd <= 320) event.preventDefault();
+    if (now - lastTouchEnd <= 280) event.preventDefault();
     lastTouchEnd = now;
-  }, {passive:false});
+  }, { passive: false });
 
-  let lastY = 0;
-  document.addEventListener('touchstart', function(e){
-    if (e.touches && e.touches[0]) lastY = e.touches[0].clientY;
-  }, {passive:true});
-  document.addEventListener('touchmove', function(e){
-    const tgt = e.target;
-    if (tgt && tgt.closest && tgt.closest('input, textarea, [contenteditable="true"]')) return;
-    const scrollTop = document.scrollingElement ? document.scrollingElement.scrollTop : (window.pageYOffset || 0);
-    const currentY = e.touches && e.touches[0] ? e.touches[0].clientY : lastY;
-    const pullingDown = currentY > lastY;
-    if (scrollTop <= 0 && pullingDown) e.preventDefault();
-  }, {passive:false});
-
-  ['contextmenu','selectstart','dragstart'].forEach((type) => {
-    document.addEventListener(type, function(e){
-      const t = e.target;
-      if (!t) return;
-      if (t.closest && t.closest('input, textarea, [contenteditable="true"]')) return;
-      if (t.closest && (t.closest('.attach-btn') || t.closest('.bubble') || t.closest('.msg-wrapper') || t.closest('.message-actions') || t.closest('.chat-row'))) {
-        e.preventDefault();
-      }
-    }, {passive:false});
+  document.addEventListener('selectstart', function(e){
+    if (e.target.closest('.bubble, .msg-wrapper, .msg-action-toggle, .attach-btn, .send-btn')) {
+      e.preventDefault();
+    }
   });
 
-  document.addEventListener('selectionchange', function(){
-    const sel = window.getSelection?.();
-    if (!sel || sel.isCollapsed) return;
-    const node = sel.anchorNode && sel.anchorNode.parentElement ? sel.anchorNode.parentElement : null;
-    if (node && !node.closest('input, textarea, [contenteditable="true"]')) sel.removeAllRanges();
+  document.addEventListener('contextmenu', function(e){
+    if (e.target.closest('.bubble, .msg-wrapper, .msg-action-toggle, .attach-btn, .send-btn')) {
+      e.preventDefault();
+    }
   });
 })();
 
-function renderRecentChatsWithSwipe(){
+
+// ---- compact recent chats swipe-delete refinement patch ----
+function recentDeleteButtonHtml(item) {
+  return `<button type="button" class="recent-delete-action" onclick="event.stopPropagation();deleteChatPrompt(${JSON.stringify(item.id)}, ${item.is_group ? 'true' : 'false'})">Delete</button>`;
+}
+
+recentChatRowHtml = function(item) {
+  const kind = item.kind || (item.is_group ? 'group' : 'private');
+  const badge = kind === 'channel' ? 'channel' : item.is_group ? 'group' : 'user';
+  const statusText = item.is_group ? `${kind}${item.role ? ` · ${item.role}` : ''}` : formatRelativeStatus(item.last_seen_label || (item.online ? 'online' : 'offline'));
+  const key = currentRoomKeyFor(item);
+  const muted = state.mutedChats.has(key);
+  const pinned = state.pinnedChats.has(key);
+  const active = state.currentTargetID === item.id && String(state.isCurrentChatGroup) === String(item.is_group);
+  const preview = escapeHtml(item.last_msg || statusText || 'No messages yet');
+  const status = escapeHtml(statusText + (muted ? ' · muted' : ''));
+  const meta = encodeURIComponent(JSON.stringify(item));
+  return `
+    <div class="recent-chat-shell ${pinned ? 'pinned-chat' : ''}" data-chat-id="${escapeHtml(item.id)}" data-group="${item.is_group ? '1' : '0'}">
+      <button type="button" class="chat-row compact-row-card ${active ? 'active' : ''}"
+        data-chat-id="${escapeHtml(item.id)}"
+        data-chat-name="${escapeHtml(item.name)}"
+        data-chat-pfp="${escapeHtml(item.pfp || '')}"
+        data-chat-group="${item.is_group ? '1' : '0'}"
+        data-chat-meta="${meta}">
+        <div class="avatar-row-wrap">
+          <div class="avatar ${!item.pfp ? 'auto' : ''}" style="background-image:${item.pfp ? `url(${item.pfp})` : 'none'};${(!item.pfp && item.profile_color) ? `background-color:${item.profile_color};` : ''}">${item.pfp ? '' : escapeHtml(getInitial(item.name))}</div>
+          ${!item.is_group && item.online ? '<span class="online-dot"></span>' : ''}
+        </div>
+        <div class="chat-meta compact-chat-meta">
+          <div class="row-between compact-row-between">
+            <strong>${item.is_group ? escapeHtml(item.name) : displayNameWithEmoji(item.name, item.premium_emoji || '')}</strong>
+            <small>${formatTime(item.time)}</small>
+          </div>
+          <p class="chat-preview-line">${preview}</p>
+          <div class="row-between compact-row-between bottom-meta">
+            <small class="muted">${status}</small>
+            <span class="tag compact-tag">${badge}</span>
+          </div>
+        </div>
+      </button>
+      ${recentDeleteButtonHtml(item)}
+    </div>`;
+};
+
+renderRecentChats = function(){
   const list = byId('chat-list'); if (!list) return;
   const filtered = state.recentChats.filter((item) => {
     const key = currentRoomKeyFor(item);
@@ -1882,112 +1917,75 @@ function renderRecentChatsWithSwipe(){
     if (state.listFilter === 'all') return true;
     return (item.kind || (item.is_group ? 'group' : 'private')) === state.listFilter;
   }).sort((a,b)=> new Date(b.time||0)-new Date(a.time||0));
-  list.innerHTML = filtered.length ? filtered.map((item) => `
-    <div class="chat-row-swipe-wrap" data-chat-id="${escapeHtml(item.id)}" data-group="${item.is_group ? '1' : '0'}">
-      <button type="button" class="chat-swipe-delete" data-delete-chat="1">Delete</button>
-      ${recentChatRowHtml(item)}
-    </div>`).join('') : '<div class="empty-mini">No chats yet</div>';
-  bindChatSwipeDelete();
-}
-renderRecentChats = renderRecentChatsWithSwipe;
+  list.innerHTML = filtered.length ? filtered.map(recentChatRowHtml).join('') : '<div class="empty-mini">No chats yet</div>';
+  bindRecentChatSwipe();
+};
 
-function bindChatSwipeDelete(){
+function closeAllRecentSwipes(exceptEl = null){
+  document.querySelectorAll('.recent-chat-shell.open').forEach((el) => {
+    if (exceptEl && el === exceptEl) return;
+    el.classList.remove('open');
+    el.style.setProperty('--swipe-x', '0px');
+  });
+}
+
+function bindRecentChatSwipe(){
   const list = byId('chat-list');
-  if (!list || list.dataset.swipeBound === '1') return;
-  list.dataset.swipeBound = '1';
-  let activeRow = null, startX = 0, currentX = 0, swiping = false;
+  if (!list) return;
+  list.querySelectorAll('.recent-chat-shell').forEach((shell) => {
+    if (shell.dataset.swipeBound === '1') return;
+    shell.dataset.swipeBound = '1';
+    let startX = 0, startY = 0, dragging = false, locked = false, deltaX = 0;
+    const main = shell.querySelector('.chat-row');
+    const maxSwipe = 92;
+    const setSwipe = (px) => shell.style.setProperty('--swipe-x', `${Math.max(-maxSwipe, Math.min(0, px))}px`);
+    const onStart = (x,y) => { startX = x; startY = y; dragging = true; locked = false; deltaX = shell.classList.contains('open') ? -maxSwipe : 0; closeAllRecentSwipes(shell); };
+    const onMove = (x,y,e) => {
+      if (!dragging) return;
+      const dx = x - startX;
+      const dy = y - startY;
+      if (!locked) {
+        if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) { dragging = false; return; }
+        if (Math.abs(dx) < 8) return;
+        locked = true;
+      }
+      e?.preventDefault?.();
+      const base = shell.classList.contains('open') ? -maxSwipe : 0;
+      setSwipe(base + dx);
+      deltaX = base + dx;
+    };
+    const onEnd = () => {
+      if (!dragging && !locked) return;
+      dragging = false;
+      const shouldOpen = deltaX < -36;
+      shell.classList.toggle('open', shouldOpen);
+      setSwipe(shouldOpen ? -maxSwipe : 0);
+    };
 
-  function closeAll(except){
-    list.querySelectorAll('.chat-row.swiped').forEach((row) => { if (row !== except) row.classList.remove('swiped'); });
-  }
+    shell.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      onStart(t.clientX, t.clientY);
+    }, {passive:true});
+    shell.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      onMove(t.clientX, t.clientY, e);
+    }, {passive:false});
+    shell.addEventListener('touchend', onEnd, {passive:true});
+    shell.addEventListener('mousedown', (e) => onStart(e.clientX, e.clientY));
+    window.addEventListener('mousemove', (e) => onMove(e.clientX, e.clientY, e));
+    window.addEventListener('mouseup', onEnd);
 
-  list.addEventListener('click', async (e) => {
-    const del = e.target.closest('.chat-swipe-delete');
-    if (del) {
-      e.preventDefault();
-      e.stopPropagation();
-      const wrap = del.closest('.chat-row-swipe-wrap');
-      if (!wrap) return;
-      await deleteChatPrompt(wrap.dataset.chatId, wrap.dataset.group === '1');
-      return;
-    }
-    const row = e.target.closest('.chat-row');
-    if (!row) return;
-    if (swiping || row.classList.contains('swiped')) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (row.classList.contains('swiped')) row.classList.remove('swiped');
-      swiping = false;
-      return;
-    }
-  }, true);
-
-  list.addEventListener('touchstart', (e) => {
-    const row = e.target.closest('.chat-row');
-    if (!row) return;
-    activeRow = row;
-    startX = e.touches[0].clientX;
-    currentX = startX;
-    swiping = false;
-    closeAll(activeRow);
-  }, {passive:true});
-
-  list.addEventListener('touchmove', (e) => {
-    if (!activeRow) return;
-    currentX = e.touches[0].clientX;
-    const dx = currentX - startX;
-    if (dx < -10) {
-      swiping = true;
-      e.preventDefault();
-      const limited = Math.max(dx, -88);
-      activeRow.style.setProperty('--swipe-x', `${limited}px`);
-      activeRow.classList.add('swiping-open');
-    }
-  }, {passive:false});
-
-  list.addEventListener('touchend', () => {
-    if (!activeRow) return;
-    const dx = currentX - startX;
-    activeRow.classList.remove('swiping-open');
-    activeRow.style.removeProperty('--swipe-x');
-    if (dx < -54) activeRow.classList.add('swiped');
-    else activeRow.classList.remove('swiped');
-    setTimeout(() => { swiping = false; }, 30);
-    activeRow = null;
-  }, {passive:true});
+    main?.addEventListener('click', (e) => {
+      if (shell.classList.contains('open')) {
+        e.preventDefault();
+        e.stopPropagation();
+        shell.classList.remove('open');
+        setSwipe(0);
+      }
+    }, true);
+  });
 }
 
-window.addEventListener('load', bindChatSwipeDelete);
-
-const __origStartVoiceRecord = startVoiceRecord;
-startVoiceRecord = async function(ev){
-  ev?.preventDefault?.();
-  ev?.stopPropagation?.();
-  document.activeElement?.blur?.();
-  return __origStartVoiceRecord();
-};
-const __origStopVoiceRecord = stopVoiceRecord;
-stopVoiceRecord = function(ev){
-  ev?.preventDefault?.();
-  ev?.stopPropagation?.();
-  return __origStopVoiceRecord();
-};
-
-renderChatPanel = (function(orig){
-  return function(name, pfp, isGroup){
-    orig(name, pfp, isGroup);
-    const mic = document.querySelector('.chat-input-area .attach-btn:last-of-type');
-    if (mic) {
-      mic.setAttribute('oncontextmenu','return false');
-      mic.setAttribute('onselectstart','return false');
-      mic.setAttribute('draggable','false');
-      mic.onmousedown = (e) => startVoiceRecord(e);
-      mic.onmouseup = (e) => stopVoiceRecord(e);
-      mic.onmouseleave = (e) => stopVoiceRecord(e);
-      mic.ontouchstart = (e) => startVoiceRecord(e);
-      mic.ontouchend = (e) => stopVoiceRecord(e);
-      mic.ontouchcancel = (e) => stopVoiceRecord(e);
-    }
-    byId('messages-view')?.setAttribute('oncontextmenu','return false');
-  }
-})(renderChatPanel);
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.recent-chat-shell')) closeAllRecentSwipes();
+});

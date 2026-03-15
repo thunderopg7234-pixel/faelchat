@@ -322,73 +322,183 @@ html,body{touch-action:manipulation;-webkit-text-size-adjust:100%} button,a,.cha
 @media (max-width:980px){.settings-panel{padding:10px}.settings-profile-card{padding:12px}.mobile-tabbar{padding:8px}.mobile-tab-btn{padding:10px 6px}.sidebar-top h2{font-size:1.25rem}.sidebar-top .icon-btn{width:38px;height:38px;border-radius:12px}.chat-row{padding:10px}.avatar{width:44px;height:44px;border-radius:14px}}
 
 
-/* ---- anti-zoom / anti-selection / pull-to-refresh / swipe-delete patch ---- */
+/* ---- Final interaction + composer patch ---- */
 html, body {
-  overscroll-behavior-y: none;
-  overscroll-behavior-x: none;
-  overscroll-behavior: none;
   touch-action: manipulation;
+  overscroll-behavior-y: contain;
+  -webkit-text-size-adjust: 100%;
 }
-body {
+body, .app-shell, .main-app, .chat-panel, .chat-shell, .messages-view {
+  overscroll-behavior-y: contain;
+}
+.message-bubble, .bubble, .msg-wrapper, .msg-stack, .message-actions, .msg-action-toggle,
+.attach-btn, .send-btn, #msg-input, .chat-input-area, .telegram-composer, .chat-row, .suggestion-row {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
-input, textarea, [contenteditable="true"] {
+#msg-input, textarea, input {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
 }
-button, a, .chat-row, .suggestion-row, .attach-btn, .icon-btn, .message-bubble, .bubble, .msg-wrapper, .message-actions, .msg-action-toggle, .avatar, .profile-avatar {
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
+.telegram-composer,
+.chat-input-area.telegram-composer,
+.chat-input-area {
+  display: grid !important;
+  grid-template-columns: 46px minmax(0,1fr) 46px 54px !important;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px calc(12px + max(env(safe-area-inset-bottom), 6px));
 }
-.messages-view, .chat-panel, .chat-shell, .sidebar, .main-app, .app-shell {
-  overscroll-behavior-y: contain;
+.chat-input-area input[type="text"],
+.telegram-composer input[type="text"],
+#msg-input {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 50px !important;
+  height: 50px !important;
+  border-radius: 22px !important;
+  padding: 0 18px !important;
+  font-size: 16px !important;
+  line-height: 1.2 !important;
+  appearance: none;
+  -webkit-appearance: none;
 }
-.attach-btn, .icon-btn, .msg-action-toggle, .chat-row {
-  -webkit-user-drag: none;
-  user-drag: none;
+.attach-btn,.send-btn{width:46px;height:46px;border-radius:18px}
+.send-btn{width:54px}
+.msg-action-toggle{font-size:18px;line-height:1}
+.message-actions button.danger-action{color:#d44747;border-color:rgba(212,71,71,.22)}
+@media (max-width:980px){
+  .telegram-composer,
+  .chat-input-area.telegram-composer,
+  .chat-input-area {
+    grid-template-columns: 42px minmax(0,1fr) 42px 50px !important;
+    gap: 8px;
+    padding: 10px 12px calc(10px + max(env(safe-area-inset-bottom), 4px));
+  }
+  .chat-input-area input[type="text"],
+  .telegram-composer input[type="text"],
+  #msg-input {
+    min-height: 46px !important;
+    height: 46px !important;
+    font-size: 16px !important;
+  }
 }
+
+
+/* ---- compact recent list refinement patch ---- */
 .chat-list{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding-bottom:6px;
+  gap:8px !important;
+  padding-right:0 !important;
 }
-.chat-row-swipe-wrap{
+.recent-chat-shell{
   position:relative;
   overflow:hidden;
-  border-radius:24px;
+  border-radius:18px;
+  --swipe-x: 0px;
 }
-.chat-swipe-delete{
+.recent-chat-shell .chat-row{
+  transform:translateX(var(--swipe-x));
+  transition:transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.recent-chat-shell .recent-delete-action{
   position:absolute;
-  top:0;
-  right:0;
-  bottom:0;
-  width:96px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
+  top:50%;
+  right:10px;
+  transform:translateY(-50%);
+  width:74px;
+  height:44px;
   border:none;
-  border-radius:24px;
-  background:linear-gradient(135deg,#ef4444,#dc2626);
+  border-radius:14px;
+  background:linear-gradient(180deg,#ff5e5e,#ef3535);
   color:#fff;
   font-weight:800;
-  letter-spacing:.01em;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
+  font-size:.9rem;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .16s ease;
 }
-.chat-row.swiping,
-.chat-row.swiped{
-  transition:transform .18s ease;
+.recent-chat-shell.open .recent-delete-action{
+  opacity:1;
+  pointer-events:auto;
 }
-.chat-row.swiped{
-  transform:translateX(-88px);
+.chat-row.compact-row-card{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  width:100%;
+  padding:11px 12px !important;
+  border-radius:18px !important;
+  background:rgba(255,255,255,.92) !important;
+  border:1px solid rgba(255,255,255,.84) !important;
+  box-shadow:0 6px 18px rgba(15,23,42,.05);
 }
-.chat-row.swiping-open{
-  transform:translateX(var(--swipe-x, 0px));
+.chat-row.compact-row-card.active{
+  background:rgba(233,247,255,.98) !important;
+  border-color:rgba(122,191,255,.5) !important;
 }
-.chat-row .row-mini-btn{display:none!important}
+.chat-row.compact-row-card .avatar{
+  width:52px;
+  height:52px;
+  border-radius:16px;
+  flex:0 0 52px;
+}
+.compact-chat-meta{
+  min-width:0;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.compact-row-between{
+  align-items:center;
+  gap:8px;
+}
+.compact-row-between strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.compact-row-between small,
+.compact-chat-meta .muted{
+  color:rgba(71,85,105,.78) !important;
+}
+.chat-preview-line{
+  margin:0 !important;
+  color:rgba(71,85,105,.92) !important;
+  line-height:1.18;
+  display:-webkit-box;
+  -webkit-line-clamp:1;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.compact-chat-meta .bottom-meta{
+  margin-top:1px;
+}
+.compact-tag{
+  padding:4px 8px !important;
+  font-size:.72rem !important;
+  background:rgba(105,196,255,.12) !important;
+  color:#4e87f7 !important;
+}
+.chat-row-actions,
+.row-mini-btn{
+  display:none !important;
+}
+@media (max-width:980px){
+  .chat-list{gap:7px !important;}
+  .recent-chat-shell .recent-delete-action{
+    right:8px;
+    width:68px;
+    height:42px;
+    border-radius:13px;
+    font-size:.84rem;
+  }
+  .chat-row.compact-row-card{
+    padding:10px 11px !important;
+    border-radius:17px !important;
+  }
+}
