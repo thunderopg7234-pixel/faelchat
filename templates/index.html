@@ -13,15 +13,42 @@
 <body>
     <div class="app-shell">
         <section id="auth-screen" class="auth-screen">
+            <div class="auth-bg"></div>
             <div class="auth-card glass-card">
-                <div class="brand-pill">FaelChat</div>
-                <h1 id="auth-title">Welcome back</h1>
-                <p id="auth-subtitle">Modern private chat with media sharing.</p>
-                <input id="aname" class="base-input hidden" placeholder="Full Name">
-                <input id="aid" class="base-input" placeholder="User ID">
-                <input id="apass" class="base-input" type="password" placeholder="Password">
-                <button id="abtn" class="base-btn" onclick="handleAuth()">Login</button>
-                <button class="link-btn" onclick="toggleAuth()">Switch to Sign Up</button>
+                <div class="auth-top">
+                    <div class="logo-badge">F</div>
+                    <div>
+                        <p class="eyebrow pink">private social chat</p>
+                        <h1 id="auth-title">Welcome back</h1>
+                        <p id="auth-subtitle">Log in with your @username and password.</p>
+                    </div>
+                </div>
+
+                <div class="auth-form">
+                    <div id="display-name-wrap" class="input-group hidden">
+                        <label>Display name</label>
+                        <input id="aname" class="base-input" placeholder="Your display name">
+                    </div>
+
+                    <div class="input-group">
+                        <label>@Username</label>
+                        <div class="handle-wrap">
+                            <span>@</span>
+                            <input id="aid" class="base-input handle-input" placeholder="fael" autocomplete="username">
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input id="apass" class="base-input" type="password" placeholder="Enter password" autocomplete="current-password">
+                    </div>
+                </div>
+
+                <button id="abtn" class="base-btn" onclick="handleAuth()">Log In</button>
+                <button class="switch-auth" onclick="toggleAuth()">
+                    <span id="auth-switch-text">Don’t have an account?</span>
+                    <strong id="auth-switch-link">Sign up</strong>
+                </button>
             </div>
         </section>
 
@@ -36,7 +63,7 @@
                 </div>
 
                 <div class="search-wrap">
-                    <input id="search-input" placeholder="Search users or groups" oninput="doSearch()" autocomplete="off">
+                    <input id="search-input" placeholder="Search @username or group code" oninput="doSearch()" autocomplete="off">
                     <div id="suggestions" class="suggestions"></div>
                 </div>
 
@@ -52,7 +79,7 @@
             </section>
 
             <aside id="settings-view" class="settings-panel glass-card">
-                <div class="sidebar-top">
+                <div class="sidebar-top settings-top">
                     <div>
                         <div class="eyebrow">Profile</div>
                         <h2>Settings</h2>
@@ -60,12 +87,48 @@
                     <button class="danger-ghost" onclick="logout()">Logout</button>
                 </div>
 
-                <div class="profile-card">
-                    <div id="settings-pfp-icon" class="profile-avatar avatar large"></div>
-                    <h3 id="settings-fullname">Name</h3>
-                    <p id="settings-id">@userid</p>
+                <div class="settings-profile-card">
+                    <div class="settings-profile-head">
+                        <div id="settings-pfp-icon" class="profile-avatar avatar large"></div>
+                        <div>
+                            <h3 id="settings-fullname">Display Name</h3>
+                            <p id="settings-id">@username</p>
+                        </div>
+                    </div>
                     <button class="base-btn secondary" onclick="document.getElementById('pfp-upload').click()">Change photo</button>
                     <input type="file" id="pfp-upload" accept="image/*" class="hidden" onchange="uploadPFP(event)">
+                </div>
+
+                <div class="telegram-card">
+                    <button class="telegram-row" onclick="document.getElementById('pfp-upload').click()">
+                        <span class="row-icon pink">📷</span>
+                        <span>Change Profile Photo</span>
+                    </button>
+                    <button class="telegram-row" onclick="openModal('profile-modal')">
+                        <span class="row-icon pink">✎</span>
+                        <span>Edit Profile</span>
+                    </button>
+                    <button class="telegram-row" onclick="logout()">
+                        <span class="row-icon pink">⇥</span>
+                        <span>Log Out</span>
+                    </button>
+                </div>
+
+                <div class="telegram-card account-card">
+                    <div class="account-row">
+                        <div class="account-left">
+                            <div id="settings-mini-avatar" class="avatar"></div>
+                            <div>
+                                <strong id="settings-fullname-2">Display Name</strong>
+                                <p id="settings-id-2">@username</p>
+                            </div>
+                        </div>
+                        <span class="badge-pill">You</span>
+                    </div>
+                    <button class="telegram-row add-account" onclick="switchToSignUp()">
+                        <span class="row-icon pink">＋</span>
+                        <span>Add Account</span>
+                    </button>
                 </div>
             </aside>
         </main>
@@ -83,6 +146,17 @@
                 <button class="base-btn secondary" onclick="joinGroup()">Join</button>
                 <button class="base-btn" onclick="createGroup()">Create</button>
             </div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal hidden">
+        <div class="modal-card glass-card">
+            <div class="modal-top">
+                <h3>Edit profile</h3>
+                <button class="icon-btn" onclick="closeModal('profile-modal')">✕</button>
+            </div>
+            <input id="edit-display-name" class="base-input" placeholder="Display name">
+            <button class="base-btn" onclick="saveProfile()">Save Changes</button>
         </div>
     </div>
 

@@ -1,5 +1,7 @@
-
 from __future__ import annotations
+
+import eventlet
+eventlet.monkey_patch()
 
 import os
 import uuid
@@ -40,7 +42,7 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
 
 db = SQLAlchemy(app)
-socketio = SocketIO(app, cors_allowed_origins='*', max_http_buffer_size=100 * 1024 * 1024)
+socketio = SocketIO(app, cors_allowed_origins='*', max_http_buffer_size=100 * 1024 * 1024, async_mode='eventlet')
 
 
 class User(db.Model):
@@ -114,6 +116,12 @@ def save_upload(file_storage) -> tuple[str, str]:
     return file_url, get_file_type(original_name)
 
 
+
+
+def normalize_handle(value: str) -> str:
+    return (value or '').strip().lstrip('@').replace(' ', '').lower()
+
+
 def avatar_payload(name: str, pfp: str) -> dict:
     return {'name': name, 'pfp': pfp or ''}
 
@@ -132,7 +140,7 @@ def index():
 def signup():
     data = request.json or {}
     username = (data.get('username') or '').strip()
-    tele_id = (data.get('tele_id') or '').strip()
+    tele_id = normalize_handle(data.get('tele_id') or '')
     password = (data.get('password') or '').strip()
 
     if not username or not tele_id or not password:
@@ -150,7 +158,7 @@ def signup():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json or {}
-    tele_id = (data.get('tele_id') or '').strip()
+    tele_id = normalize_handle(data.get('tele_id') or '')
     password = (data.get('password') or '').strip()
 
     user = User.query.filter_by(tele_id=tele_id, password=password).first()
@@ -167,7 +175,7 @@ def login():
 
 @app.route('/search_suggestions')
 def search_suggestions():
-    q = (request.args.get('q') or '').strip()
+    q = normalize_handle(request.args.get('q') or '')
     my_id = (request.args.get('my_id') or '').strip()
     if not q:
         return jsonify([])
@@ -202,7 +210,7 @@ def search_suggestions():
 def create_group():
     data = request.json or {}
     name = (data.get('name') or '').strip()
-    code = (data.get('code') or '').strip()
+    code = normalize_handle(data.get('code') or '')
     creator_id = (data.get('creator_id') or '').strip()
 
     if not name or not code or not creator_id:
@@ -220,7 +228,7 @@ def create_group():
 @app.route('/join_group', methods=['POST'])
 def join_group():
     data = request.json or {}
-    code = (data.get('code') or '').strip()
+    code = normalize_handle(data.get('code') or '')
     tele_id = (data.get('tele_id') or '').strip()
 
     group = Group.query.filter_by(code=code).first()
@@ -328,6 +336,25 @@ def profile(tele_id):
     return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or ''})
 
 
+
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    data = request.json or {}
+    tele_id = normalize_handle(data.get('tele_id') or '')
+    username = (data.get('username') or '').strip()
+
+    if not tele_id or not username:
+        return json_error('Fill all fields')
+
+    user = User.query.filter_by(tele_id=tele_id).first()
+    if not user:
+        return json_error('User not found', 404)
+
+    user.username = username
+    db.session.commit()
+    return jsonify({'status': 'success', 'username': user.username, 'tele_id': user.tele_id, 'pfp': user.pfp or ''})
+
 @app.route('/upload', methods=['POST'])
 def upload():
     if 'file' not in request.files:
@@ -341,7 +368,7 @@ def upload():
 
     upload_type = (request.form.get('type') or '').strip()
     if upload_type == 'pfp':
-        tele_id = (request.form.get('tele_id') or '').strip()
+        tele_id = normalize_handle(request.form.get('tele_id') or '')
         user = User.query.filter_by(tele_id=tele_id).first()
         if not user:
             return json_error('User not found', 404)

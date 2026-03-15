@@ -12,12 +12,16 @@ const state = {
 };
 
 const byId = (id) => document.getElementById(id);
-const escapeHtml = (str = '') => str
+const escapeHtml = (str = '') => String(str)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+
+function normalizeHandle(value = '') {
+    return value.trim().replace(/^@+/, '').replace(/\s+/g, '').toLowerCase();
+}
 
 function getInitial(name = '?') {
     return (name || '?').trim().charAt(0).toUpperCase();
@@ -37,18 +41,29 @@ function showToast(message) {
     showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2400);
 }
 
-function toggleAuth() {
-    state.isSignUp = !state.isSignUp;
-    byId('aname').classList.toggle('hidden', !state.isSignUp);
-    byId('abtn').textContent = state.isSignUp ? 'Create account' : 'Login';
+function toggleAuth(forceSignUp = null) {
+    state.isSignUp = forceSignUp === null ? !state.isSignUp : Boolean(forceSignUp);
+    byId('display-name-wrap').classList.toggle('hidden', !state.isSignUp);
+    byId('abtn').textContent = state.isSignUp ? 'Create account' : 'Log In';
     byId('auth-title').textContent = state.isSignUp ? 'Create your account' : 'Welcome back';
-    byId('auth-subtitle').textContent = state.isSignUp ? 'Pick a user ID and start chatting.' : 'Modern private chat with media sharing.';
+    byId('auth-subtitle').textContent = state.isSignUp
+        ? 'Choose your @username, display name, and password.'
+        : 'Log in with your @username and password.';
+    byId('auth-switch-text').textContent = state.isSignUp ? 'Already have an account?' : 'Don’t have an account?';
+    byId('auth-switch-link').textContent = state.isSignUp ? 'Log in' : 'Sign up';
+}
+
+function switchToSignUp() {
+    logout(false);
+    toggleAuth(true);
+    byId('auth-screen').classList.remove('hidden');
+    byId('main-app').classList.add('hidden');
 }
 
 async function handleAuth() {
     const payload = {
         username: byId('aname').value.trim(),
-        tele_id: byId('aid').value.trim(),
+        tele_id: normalizeHandle(byId('aid').value),
         password: byId('apass').value.trim(),
     };
 
@@ -58,10 +73,11 @@ async function handleAuth() {
     }
 
     const endpoint = state.isSignUp ? '/signup' : '/login';
+    const body = state.isSignUp ? payload : { tele_id: payload.tele_id, password: payload.password };
     const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.status !== 'success') {
@@ -79,49 +95,89 @@ async function handleAuth() {
     showToast(state.isSignUp ? 'Account created' : 'Logged in');
 }
 
-function logout() {
+function logout(reload = true) {
     localStorage.removeItem('fID');
     localStorage.removeItem('fName');
     localStorage.removeItem('fPFP');
-    location.reload();
+    if (reload) location.reload();
 }
 
 function openModal(id) { byId(id).classList.remove('hidden'); }
 function closeModal(id) { byId(id).classList.add('hidden'); }
 
+function hydrateProfile() {
+    byId('settings-fullname').textContent = state.myName || 'User';
+    byId('settings-id').textContent = `@${state.myID}`;
+    byId('settings-fullname-2').textContent = state.myName || 'User';
+    byId('settings-id-2').textContent = `@${state.myID}`;
+    byId('edit-display-name').value = state.myName || '';
+    setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
+    setAvatar(byId('settings-mini-avatar'), state.myName, state.myPFP);
+}
+
 function startSession() {
     byId('auth-screen').classList.add('hidden');
     byId('main-app').classList.remove('hidden');
-    byId('settings-fullname').textContent = state.myName || 'User';
-    byId('settings-id').textContent = `@${state.myID}`;
-    setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
+    hydrateProfile();
     socket.emit('connect_radar', { my_id: state.myID });
     loadRecentChats();
+}
+
+async function saveProfile() {
+    const username = byId('edit-display-name').value.trim();
+    if (!username) {
+        showToast('Display name required');
+        return;
+    }
+
+    const res = await fetch('/update_profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tele_id: state.myID, username }),
+    });
+    const data = await res.json();
+    if (data.status !== 'success') {
+        showToast(data.message || 'Could not update profile');
+        return;
+    }
+
+    state.myName = data.username;
+    localStorage.setItem('fName', state.myName);
+    hydrateProfile();
+    closeModal('profile-modal');
+    await loadRecentChats();
+    if (state.currentTargetID) {
+        await openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup);
+    }
+    showToast('Profile updated');
 }
 
 async function doSearch() {
     const q = byId('search-input').value.trim();
     const sug = byId('suggestions');
     sug.innerHTML = '';
-    sug.classList.remove('show');
-    if (!q) return;
+    if (!q) {
+        sug.classList.remove('show');
+        return;
+    }
 
-    const res = await fetch(`/search_suggestions?q=${encodeURIComponent(q)}&my_id=${encodeURIComponent(state.myID)}`);
-    const results = await res.json();
-    if (!Array.isArray(results) || results.length === 0) {
-        sug.innerHTML = `<div class="suggestion-row"><div class="chat-meta"><strong>No result</strong><p>Try exact user ID or group code.</p></div></div>`;
+    const res = await fetch(`/search_suggestions?q=${encodeURIComponent(normalizeHandle(q) || q)}&my_id=${encodeURIComponent(state.myID)}`);
+    const data = await res.json();
+
+    if (!Array.isArray(data) || data.length === 0) {
+        sug.innerHTML = `<div class="suggestion-row"><div class="chat-meta"><strong>No result</strong><p>Try exact @username or group code</p></div></div>`;
         sug.classList.add('show');
         return;
     }
 
-    results.forEach((item) => {
+    data.forEach((item) => {
         const row = document.createElement('div');
         row.className = 'suggestion-row';
         row.innerHTML = `
-            <div class="avatar suggestion-avatar"></div>
+            <div class="avatar"></div>
             <div class="chat-meta">
                 <strong>${escapeHtml(item.name)}</strong>
-                <p>${escapeHtml(item.id)}</p>
+                <p>${item.type === 'user' ? '@' : ''}${escapeHtml(item.id)}</p>
             </div>
             <span class="tag">${item.type}</span>
         `;
@@ -129,11 +185,7 @@ async function doSearch() {
         row.onclick = async () => {
             sug.classList.remove('show');
             byId('search-input').value = '';
-            if (item.type === 'group') {
-                await openChat(item.name, item.id, item.pfp, true);
-                return;
-            }
-            await openChat(item.name, item.id, item.pfp, false);
+            await openChat(item.name, item.id, item.pfp, item.type === 'group');
         };
         sug.appendChild(row);
     });
@@ -142,7 +194,7 @@ async function doSearch() {
 
 async function createGroup() {
     const name = byId('group-name').value.trim();
-    const code = byId('group-code').value.trim();
+    const code = normalizeHandle(byId('group-code').value);
     if (!name || !code) {
         showToast('Fill group name and code');
         return;
@@ -167,7 +219,7 @@ async function createGroup() {
 }
 
 async function joinGroup() {
-    const code = byId('group-code').value.trim();
+    const code = normalizeHandle(byId('group-code').value);
     if (!code) {
         showToast('Enter a group code');
         return;
@@ -388,10 +440,10 @@ async function uploadPFP(event) {
 
     state.myPFP = data.url;
     localStorage.setItem('fPFP', state.myPFP);
-    setAvatar(byId('settings-pfp-icon'), state.myName, state.myPFP);
-    loadRecentChats();
+    hydrateProfile();
+    await loadRecentChats();
     if (state.currentTargetID) {
-        openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup);
+        await openChat(state.currentTargetName, state.currentTargetID, state.currentTargetPFP, state.isCurrentChatGroup);
     }
     showToast('Profile photo updated');
 }
